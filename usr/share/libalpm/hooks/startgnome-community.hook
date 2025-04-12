@@ -1,0 +1,11 @@
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/bin/gnome-session
+Target = usr/bin/startgnome-community
+
+[Action]
+Description = Replace gnome-session with startgnome-community
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/startgnome-community

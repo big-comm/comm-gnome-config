@@ -1,0 +1,12 @@
+[Unit]
+Description=Wallpaper Monitor for GDM
+After=display-manager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wallpaper-monitor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

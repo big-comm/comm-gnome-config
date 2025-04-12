@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+# Color definitions for status messages
+blueDark="\e[1;38;5;33m"     # Bold dark blue
+mediumBlue="\e[1;38;5;32m"   # Bold medium blue
+lightBlue="\e[1;38;5;39m"    # Bold light blue
+cyan="\e[1;38;5;45m"         # Bold cyan
+white="\e[1;97m"             # Bold white
+reset="\e[0m"                # Reset text formatting
+
+# Print status messages
+printMsg() {
+    local message=$1
+    echo -e "${blueDark}[${lightBlue}comm-gnome-config${blueDark}]${reset} ${cyan}→${reset} ${white}${message}${reset}"
+}
+
+# Function executed before package installation
+pre_install() {
+    # Nothing special needed before installation
+    printMsg "Preparing for installation..."
+}
+
+# Function executed after package installation
+post_install() {
+    # Backup original theme if it doesn't exist
+    if [ ! -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+        if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource" ]; then
+            printMsg "Creating backup of original GNOME shell theme..."
+            cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource" "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+        fi
+    fi
+    
+    # Apply custom theme
+    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
+        printMsg "Applying custom GNOME shell theme..."
+        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    fi
+    
+    # Enable and start the service
+    printMsg "Enabling wallpaper monitor service..."
+    systemctl enable wallpaper-monitor.service
+    
+    printMsg "Starting wallpaper monitor service..."
+    systemctl start wallpaper-monitor.service
+    
+    printMsg "GNOME configuration completed successfully"
+}
+
+# Function executed before package upgrade
+pre_upgrade() {
+    # Nothing special needed before upgrade
+    printMsg "Preparing for package upgrade..."
+}
+
+# Function executed after package upgrade
+post_upgrade() {
+    # Apply custom theme again
+    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
+        printMsg "Reapplying custom GNOME shell theme..."
+        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    fi
+    
+    printMsg "Reloading systemd configuration..."
+    systemctl daemon-reload
+    
+    printMsg "Restarting wallpaper monitor service..."
+    systemctl restart wallpaper-monitor.service
+    
+    printMsg "GNOME configuration upgrade completed successfully"
+}
+
+# Function executed before package removal
+pre_remove() {
+    printMsg "Stopping wallpaper monitor service..."
+    systemctl stop wallpaper-monitor.service
+    
+    printMsg "Disabling wallpaper monitor service..."
+    systemctl disable wallpaper-monitor.service
+    
+    # Restore original theme if it exists
+    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+        printMsg "Restoring original GNOME shell theme..."
+        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    fi
+}
+
+# Function executed after package removal
+post_remove() {
+    # Clean up residual files
+    printMsg "Cleaning up remaining files..."
+    rm -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
+    rm -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+    
+    printMsg "Cleanup completed successfully"
+}

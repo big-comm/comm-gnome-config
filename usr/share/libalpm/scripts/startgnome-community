@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Add startgnome-community in gnome-session
+if [ "$(grep startgnome-community /usr/bin/gnome-session)" = "" ]; then
+    sed -i '/gnome-session-binary/i . /usr/bin/startgnome-community' /usr/bin/gnome-session
+fi

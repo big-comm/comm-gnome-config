@@ -1,0 +1,17 @@
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = gnome-shell
+Target = comm-gnome-config
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/share/gnome-shell/gnome-shell-theme.gresource
+
+[Action]
+Description = Atualizando tema do GNOME Shell...
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/gnome-shell-theme-gdm

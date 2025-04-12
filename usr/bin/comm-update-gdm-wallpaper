@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+
+"""
+GDM Wallpaper Updater
+This script updates the GDM login screen to use the current user's wallpaper.
+"""
+
+import os
+import sys
+import subprocess
+import shutil
+import tempfile
+import logging
+
+# Configure logging
+logging.basicConfig(
+    filename='/var/log/gdm-wallpaper-updater.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def run_command(cmd, shell=False):
+    """Execute command and return output or None on error"""
+    try:
+        if shell:
+            result = subprocess.run(cmd, shell=True, check=True, text=True, capture_output=True)
+        else:
+            result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error executing command: {cmd}")
+        logging.error(f"Error: {e}")
+        logging.error(f"Output: {e.stderr}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error executing: {cmd}")
+        logging.error(f"Exception: {str(e)}")
+        return None
+
+def main():
+    logging.info("Starting GDM theme update")
+    
+    # Check if running as root
+    if os.geteuid() != 0:
+        logging.error("This script must be run as root")
+        print("This script must be run as root")
+        sys.exit(1)
+    
+    # Create temporary directory
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Get user session information
+        current_user = run_command("who | awk '!/ tty/ {print $1}' | head -1", shell=True)
+        if not current_user:
+            logging.error("Could not determine current user")
+            return
+        
+        display = run_command(f"w -h | awk -v user=\"{current_user}\" '$1 == user {{print $3}}' | head -n1", shell=True)
+        if not display:
+            logging.error("Could not determine display")
+            return
+        
+        # Get wallpaper file
+        wallpaper = run_command(f"su - {current_user} -c \"DISPLAY={display} dconf read /org/gnome/desktop/background/picture-uri\" | tr -d \"'\"", shell=True)
+        if not wallpaper:
+            # Try dark theme wallpaper
+            wallpaper = run_command(f"su - {current_user} -c \"DISPLAY={display} dconf read /org/gnome/desktop/background/picture-uri-dark\" | tr -d \"'\"", shell=True)
+            
+        if not wallpaper:
+            logging.error("Could not get wallpaper path")
+            return
+            
+        # Remove file:// prefix
+        wallpaper_file = wallpaper.replace("file://", "")
+        logging.info(f"Found wallpaper: {wallpaper_file}")
+        
+        # Copy and extract resources
+        os.chdir(temp_dir)
+        shutil.copy("/usr/share/gnome-shell/gnome-shell-theme.gresource", temp_dir)
+        
+        # List and extract resources
+        resources = run_command("gresource list gnome-shell-theme.gresource", shell=True)
+        if not resources:
+            logging.error("Failed to list resources")
+            return
+            
+        for resource in resources.splitlines():
+            output_file = resource.replace("/org/gnome/shell/theme/", "")
+            run_command(f"gresource extract gnome-shell-theme.gresource {resource} > {output_file}", shell=True)
+        
+        # Convert or copy wallpaper
+        if wallpaper_file.lower().endswith('.avif'):
+            run_command(f"convert \"{wallpaper_file}\" fundo.jpg", shell=True)
+        else:
+            shutil.copy(wallpaper_file, "fundo.jpg")
+        
+        # Create resource XML exactly as in the original script
+        xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/shell/theme">
+    <file>fundo.jpg</file>
+    <file>calendar-today-light.svg</file>
+    <file>calendar-today.svg</file>
+    <file>checkbox-focused.svg</file>
+    <file>checkbox-off-focused-light.svg</file>
+    <file>checkbox-off-focused.svg</file>
+    <file>checkbox-off-light.svg</file>
+    <file>checkbox-off.svg</file>
+    <file>checkbox.svg</file>
+    <file>gnome-shell-dark.css</file>
+    <file>gnome-shell-high-contrast.css</file>
+    <file>gnome-shell-light.css</file>
+    <file>gnome-shell-start.svg</file>
+    <file>pad-osd.css</file>
+    <file>process-working-dark.svg</file>
+    <file>process-working-light.svg</file>
+    <file>toggle-off-light.svg</file>
+    <file>toggle-off.svg</file>
+    <file>toggle-on-light.svg</file>
+    <file>toggle-on.svg</file>
+    <file>workspace-placeholder.svg</file>
+  </gresource>
+</gresources>"""
+        
+        with open("gnome-shell-theme.gresource.xml", "w") as f:
+            f.write(xml_content)
+        
+        # Compile and install
+        result = run_command("glib-compile-resources gnome-shell-theme.gresource.xml", shell=True)
+        if result is None:
+            logging.error("Failed to compile resources")
+            return
+        
+        # Backup original if needed
+        if not os.path.exists("/usr/share/gnome-shell/gnome-shell-theme.gresource.default"):
+            if os.path.exists("/usr/share/gnome-shell/gnome-shell-theme.gresource"):
+                shutil.copy("/usr/share/gnome-shell/gnome-shell-theme.gresource", 
+                           "/usr/share/gnome-shell/gnome-shell-theme.gresource.default")
+        
+        # Save backup copy for package
+        shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource.big")
+        
+        # Install new theme
+        shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource")
+        
+        logging.info("GDM theme successfully updated")
+        
+    except Exception as e:
+        logging.error(f"Error updating GDM theme: {str(e)}")
+    finally:
+        # Clean up
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+if __name__ == "__main__":
+    main()

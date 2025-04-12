@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# Script to restore the custom GDM theme
+
+# Configure logging
+log_file="/var/log/gdm-theme-restore.log"
+echo "$(date) - Starting GDM theme restoration" >> $log_file
+
+# Backup original theme if it doesn't exist yet
+if [ ! -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource" ]; then
+        echo "Creating backup of original theme" >> $log_file
+        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource" "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+    fi
+fi
+
+# Restore custom theme if it exists
+if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
+    echo "Restoring custom theme" >> $log_file
+    cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    echo "Custom theme successfully restored" >> $log_file
+else
+    echo "ERROR: Custom theme file not found" >> $log_file
+    exit 1
+fi
+
+# Call wallpaper update script
+echo "Calling wallpaper update script" >> $log_file
+/usr/bin/comm-update-gdm-wallpaper
+
+echo "$(date) - Process completed" >> $log_file
+exit 0

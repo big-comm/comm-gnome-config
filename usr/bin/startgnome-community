@@ -1,0 +1,92 @@
+#!/bin/sh
+
+# Tests if the card is NVIDIA, if so, uses the value of the variables
+lspci | grep -qi "vga.*nvidia" && {
+   export GSK_RENDERER=ngl
+   export GDK_DISABLE=vulkan
+   export GDK_GL_DISABLE=buffer-storage
+}
+
+# Defining the default visual style to be used in applications that use Qt
+[[ -z $QT_STYLE_OVERRIDE ]] && export QT_STYLE_OVERRIDE="kvantum"
+[[ -z $QT_QPA_PLATFORMTHEME ]] && export QT_QPA_PLATFORMTHEME="gnome"
+[[ -z $QT_WAYLAND_DECORATION ]] && export QT_WAYLAND_DECORATION="adwaita"
+
+# Apps in electron use wayland
+[[ -z $ELECTRON_OZONE_PLATFORM_HINT ]] && export ELECTRON_OZONE_PLATFORM_HINT="auto"
+
+# Check system theme to apply if the QT theme is clade or dark
+if [ -f "/usr/share/sync-kde-and-gtk-places/sync-gnome-theme-to-qt.sh" ]; then
+    # Tenta executar 3 vezes com intervalo de 1 segundo
+    for i in {1..3}; do
+        if /usr/share/sync-kde-and-gtk-places/sync-gnome-theme-to-qt.sh; then
+            logger "sync-gnome-theme-to-qt.sh executed successfully"
+            break
+        else
+            logger "Failed to execute sync-gnome-theme-to-qt.sh, attempt $i"
+            sleep 0.7
+        fi
+    done
+else
+    logger "sync-gnome-theme-to-qt.sh not found"
+fi
+
+# If using mesa amber force cairo renderer
+if compgen -G /var/lib/pacman/local/mesa-amber-* || systemd-detect-virt -q; then
+    [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="cairo"
+else
+    [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="ngl"
+fi
+
+# Force language
+if [ "$LANGUAGE" = "" ]; then
+    [[ -z $LANGUAGE ]] && export LANGUAGE=$LANG
+fi
+
+# Checks if the shell has already been changed
+if [ ! -f "$HOME/.biglinux-shell-changed" ]; then
+    biglinux-change-default-shell bash-power
+    touch "$HOME/.biglinux-shell-changed"
+fi
+
+# Faster AMD GPU
+[[ -z $RADV_PERFTEST ]] && export RADV_PERFTEST="sam,nggc,ext_ms"
+
+# OBS Studio game capture with vulkan
+if [ -e "/usr/bin/obs-vkcapture" ]; then
+    [[ -z $OBS_USE_EGL ]] && export OBS_USE_EGL=1
+    [[ -z $OBS_VKCAPTURE ]] && export OBS_VKCAPTURE=1
+    [[ -z $VK_INSTANCE_LAYERS ]] && export VK_INSTANCE_LAYERS="VK_LAYER_OBS_vkcapture_64:VK_LAYER_VALVE_steam_overlay_64" #Fix MangoHUD overlay
+fi
+
+# Keyboard LED
+if [ -e "$HOME/.config/ledkeyboard" ]; then
+   change-keyboard-led on
+fi
+
+# Define the path to the cursor theme setting in dconf
+dconfPath=/org/gnome/desktop/interface/cursor-theme
+
+# Get the current cursor theme
+currentTheme=$(dconf read $dconfPath)
+
+# Enable automatic mounting of devices
+gsettings set org.gnome.desktop.media-handling automount true
+
+### Execute in LiveCD
+if [ -e /usr/bin/startbiglive ]; then
+    # Revert variables to Gnome
+    export DESKTOP_SESSION=gnome
+    export XDG_SESSION_DESKTOP=gnome
+    export XDG_CURRENT_DESKTOP=GNOME
+    export GDMSESSION=gnome
+    
+    # Enables basic, unencrypted password storage in Chromium-based browsers
+    sudo sed -i '/--password-store=basic/!s/\(exec \/usr\/lib\/brave-browser\/brave "$@" $USER_FLAGS\)$/\1 --password-store=basic/' /usr/bin/brave
+
+    # Removes unwanted files
+    rm -f "$HOME/Empty Bash" "$HOME/Empty Desktop File.desktop" "$HOME/Empty File"
+
+    # Updates user directories
+    LANG=$LANG xdg-user-dirs-update --force
+fi
