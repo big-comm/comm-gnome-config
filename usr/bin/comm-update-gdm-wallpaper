@@ -37,6 +37,26 @@ def run_command(cmd, shell=False):
         logging.error(f"Exception: {str(e)}")
         return None
 
+def get_display_for_user(user):
+    """Try to find the DISPLAY associated with a user session"""
+    try:
+        sessions = run_command("loginctl list-sessions --no-legend", shell=True)
+        if not sessions:
+            return ":0"  # fallback
+        for line in sessions.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] == user:
+                session_id = parts[0]
+                display_info = run_command(f"loginctl show-session {session_id} -p Display", shell=True)
+                if display_info and "=" in display_info:
+                    display = display_info.split("=")[1].strip()
+                    if display:
+                        return display
+        return ":0"  # fallback
+    except Exception as e:
+        logging.error(f"Failed to determine display from loginctl: {e}")
+        return ":0"
+
 def main():
     logging.info("Starting GDM theme update")
     
@@ -55,7 +75,7 @@ def main():
             logging.error("Could not determine current user")
             return
         
-        display = run_command(f"w -h | awk -v user=\"{current_user}\" '$1 == user {{print $3}}' | head -n1", shell=True)
+        display = get_display_for_user(current_user)
         if not display:
             logging.error("Could not determine display")
             return
@@ -94,7 +114,7 @@ def main():
         else:
             shutil.copy(wallpaper_file, "fundo.jpg")
         
-        # Create resource XML exactly as in the original script
+        # Create resource XML
         xml_content = """<?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/org/gnome/shell/theme">
