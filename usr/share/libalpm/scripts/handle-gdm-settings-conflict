@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+# Script to handle conflicts with gdm-settings
+# This script is called by pacman hooks when gdm-settings is installed or removed
+
+# Configure logging
+log_file="/var/log/gdm-settings-conflict.log"
+echo "$(date) - Starting gdm-settings conflict management" >> $log_file
+
+# Function to check if gdm-settings is installed
+is_gdm_settings_installed() {
+    if pacman -Qi gdm-settings >/dev/null 2>&1; then
+        return 0
+    elif [ -f "/usr/bin/gdm-settings" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to restore default theme
+restore_default_theme() {
+    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+        echo "Restoring default GDM theme due to gdm-settings presence" >> $log_file
+        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        return 0
+    else
+        echo "WARNING: Default theme backup not found" >> $log_file
+        return 1
+    fi
+}
+
+# Function to restore custom theme
+restore_custom_theme() {
+    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
+        echo "Restoring custom GDM theme - gdm-settings removed" >> $log_file
+        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        
+        # Update with current wallpaper
+        echo "Updating wallpaper theme" >> $log_file
+        /usr/bin/comm-update-gdm-wallpaper
+        return 0
+    else
+        echo "WARNING: Custom theme backup not found" >> $log_file
+        return 1
+    fi
+}
+
+# Function to manage wallpaper monitor service
+manage_service() {
+    local action=$1
+    
+    case $action in
+        "enable")
+            echo "Enabling wallpaper monitor service" >> $log_file
+            systemctl enable wallpaper-monitor.service >/dev/null 2>&1
+            systemctl start wallpaper-monitor.service >/dev/null 2>&1
+            ;;
+        "disable")
+            echo "Disabling wallpaper monitor service" >> $log_file
+            systemctl stop wallpaper-monitor.service >/dev/null 2>&1
+            systemctl disable wallpaper-monitor.service >/dev/null 2>&1
+            ;;
+    esac
+}
+
+# Main logic
+if is_gdm_settings_installed; then
+    echo "gdm-settings detected - configuring for compatibility" >> $log_file
+    restore_default_theme
+    manage_service "disable"
+    echo "Switched to default theme and disabled wallpaper monitoring" >> $log_file
+else
+    echo "gdm-settings not detected - enabling custom wallpaper sync" >> $log_file
+    restore_custom_theme
+    manage_service "enable"
+    echo "Restored custom theme and enabled wallpaper monitoring" >> $log_file
+fi
+
+echo "$(date) - gdm-settings conflict management completed" >> $log_file
+exit 0

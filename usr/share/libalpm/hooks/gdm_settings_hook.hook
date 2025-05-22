@@ -1,0 +1,11 @@
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = gdm-settings
+
+[Action]
+Description = Gerenciando conflito com gdm-settings...
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/handle-gdm-settings-conflict

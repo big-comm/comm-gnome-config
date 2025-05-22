@@ -3,6 +3,7 @@
 """
 GDM Wallpaper Updater
 This script updates the GDM login screen to use the current user's wallpaper.
+It also checks for gdm-settings conflicts.
 """
 
 import os
@@ -37,6 +38,41 @@ def run_command(cmd, shell=False):
         logging.error(f"Exception: {str(e)}")
         return None
 
+def is_gdm_settings_installed():
+    """Check if gdm-settings is installed"""
+    try:
+        # Check if gdm-settings package is installed (Arch/Manjaro)
+        result = run_command("pacman -Qi gdm-settings", shell=True)
+        if result is not None:
+            return True
+            
+        # Check if gdm-settings binary exists
+        if os.path.exists("/usr/bin/gdm-settings"):
+            return True
+            
+        return False
+    except Exception as e:
+        logging.error(f"Error checking gdm-settings: {str(e)}")
+        return False
+
+def restore_default_theme():
+    """Restore the default GDM theme when gdm-settings is present"""
+    try:
+        default_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+        current_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        
+        if os.path.exists(default_theme):
+            shutil.copy(default_theme, current_theme)
+            os.chmod(current_theme, 0o644)
+            logging.info("Default GDM theme restored due to gdm-settings presence")
+            return True
+        else:
+            logging.warning("Default theme backup not found")
+            return False
+    except Exception as e:
+        logging.error(f"Error restoring default theme: {str(e)}")
+        return False
+
 def get_display_for_user(user):
     """Try to find the DISPLAY associated with a user session"""
     try:
@@ -59,6 +95,12 @@ def get_display_for_user(user):
 
 def main():
     logging.info("Starting GDM theme update")
+    
+    # Check if gdm-settings is installed
+    if is_gdm_settings_installed():
+        logging.info("gdm-settings detected - skipping wallpaper update and restoring default theme")
+        restore_default_theme()
+        return
     
     # Check if running as root
     if os.geteuid() != 0:
@@ -160,10 +202,12 @@ def main():
         # Save backup copy for package
         shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource.big")
         
-        # Install new theme
-        shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource")
-        
-        logging.info("GDM theme successfully updated")
+        # Install new theme only if gdm-settings is not present
+        if not is_gdm_settings_installed():
+            shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource")
+            logging.info("GDM theme successfully updated")
+        else:
+            logging.info("gdm-settings detected after processing - theme not applied")
         
     except Exception as e:
         logging.error(f"Error updating GDM theme: {str(e)}")
