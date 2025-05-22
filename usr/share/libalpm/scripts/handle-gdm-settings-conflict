@@ -1,11 +1,38 @@
 #!/usr/bin/env bash
 
 # Script to handle conflicts with gdm-settings
-# This script is called by pacman hooks when gdm-settings is installed or removed
+# Simplified version for BigCommunity distro where comm-gnome-config is always present
 
 # Configure logging
 log_file="/var/log/gdm-settings-conflict.log"
-echo "$(date) - Starting gdm-settings conflict management" >> $log_file
+echo "$(date) - BigCommunity: gdm-settings conflict management started" >> $log_file
+
+# Lock file to prevent concurrent operations
+lock_file="/var/lock/gdm-theme-operations.lock"
+
+# Function to acquire lock
+acquire_lock() {
+    local timeout=30
+    local count=0
+    
+    while [ -f "$lock_file" ] && [ $count -lt $timeout ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    
+    if [ $count -ge $timeout ]; then
+        echo "$(date) - Timeout waiting for lock" >> $log_file
+        return 1
+    fi
+    
+    echo $$ > "$lock_file"
+    return 0
+}
+
+# Function to release lock
+release_lock() {
+    rm -f "$lock_file"
+}
 
 # Function to check if gdm-settings is installed
 is_gdm_settings_installed() {
@@ -21,12 +48,12 @@ is_gdm_settings_installed() {
 # Function to restore default theme
 restore_default_theme() {
     if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
-        echo "Restoring default GDM theme due to gdm-settings presence" >> $log_file
+        echo "BigCommunity: Restoring default GDM theme for gdm-settings compatibility" >> $log_file
         cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
         chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
         return 0
     else
-        echo "WARNING: Default theme backup not found" >> $log_file
+        echo "BigCommunity: WARNING - Default theme backup not found" >> $log_file
         return 1
     fi
 }
@@ -34,16 +61,18 @@ restore_default_theme() {
 # Function to restore custom theme
 restore_custom_theme() {
     if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
-        echo "Restoring custom GDM theme - gdm-settings removed" >> $log_file
+        echo "BigCommunity: Restoring custom wallpaper sync theme" >> $log_file
         cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
         chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
         
         # Update with current wallpaper
-        echo "Updating wallpaper theme" >> $log_file
-        /usr/bin/comm-update-gdm-wallpaper
+        if [ -f "/usr/bin/comm-update-gdm-wallpaper" ]; then
+            echo "BigCommunity: Updating wallpaper theme" >> $log_file
+            /usr/bin/comm-update-gdm-wallpaper >/dev/null 2>&1
+        fi
         return 0
     else
-        echo "WARNING: Custom theme backup not found" >> $log_file
+        echo "BigCommunity: WARNING - Custom theme backup not found" >> $log_file
         return 1
     fi
 }
@@ -54,30 +83,40 @@ manage_service() {
     
     case $action in
         "enable")
-            echo "Enabling wallpaper monitor service" >> $log_file
+            echo "BigCommunity: Enabling wallpaper sync service" >> $log_file
             systemctl enable wallpaper-monitor.service >/dev/null 2>&1
             systemctl start wallpaper-monitor.service >/dev/null 2>&1
             ;;
         "disable")
-            echo "Disabling wallpaper monitor service" >> $log_file
+            echo "BigCommunity: Disabling wallpaper sync service" >> $log_file
             systemctl stop wallpaper-monitor.service >/dev/null 2>&1
             systemctl disable wallpaper-monitor.service >/dev/null 2>&1
             ;;
     esac
 }
 
-# Main logic
-if is_gdm_settings_installed; then
-    echo "gdm-settings detected - configuring for compatibility" >> $log_file
-    restore_default_theme
-    manage_service "disable"
-    echo "Switched to default theme and disabled wallpaper monitoring" >> $log_file
-else
-    echo "gdm-settings not detected - enabling custom wallpaper sync" >> $log_file
-    restore_custom_theme
-    manage_service "enable"
-    echo "Restored custom theme and enabled wallpaper monitoring" >> $log_file
+# Main logic with locking
+if ! acquire_lock; then
+    echo "$(date) - BigCommunity: Failed to acquire lock, exiting" >> $log_file
+    exit 1
 fi
 
-echo "$(date) - gdm-settings conflict management completed" >> $log_file
+# Trap to ensure lock is released
+trap 'release_lock; exit' INT TERM EXIT
+
+# Check current state and act accordingly
+if is_gdm_settings_installed; then
+    echo "BigCommunity: gdm-settings detected - switching to compatibility mode" >> $log_file
+    restore_default_theme
+    manage_service "disable"
+    echo "BigCommunity: Now using default theme with gdm-settings compatibility" >> $log_file
+else
+    echo "BigCommunity: gdm-settings removed - restoring wallpaper sync" >> $log_file
+    restore_custom_theme
+    manage_service "enable"
+    echo "BigCommunity: Custom wallpaper sync restored and active" >> $log_file
+fi
+
+echo "$(date) - BigCommunity: gdm-settings conflict management completed" >> $log_file
+release_lock
 exit 0

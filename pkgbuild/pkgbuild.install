@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# BigCommunity GNOME Configuration Install Script
+# Optimized for BigCommunity distro where this package is always present
+
 # Color definitions for status messages
 blueDark="\e[1;38;5;33m"     # Bold dark blue
 mediumBlue="\e[1;38;5;32m"   # Bold medium blue
@@ -14,15 +17,20 @@ printMsg() {
     echo -e "${blueDark}[${lightBlue}comm-gnome-config${blueDark}]${reset} ${cyan}→${reset} ${white}${message}${reset}"
 }
 
-# Function executed before package installation
-pre_install() {
-    # Nothing special needed before installation
-    printMsg "Preparing for installation..."
+# Function to check if gdm-settings is installed
+is_gdm_settings_installed() {
+    if pacman -Qi gdm-settings >/dev/null 2>&1; then
+        return 0
+    elif [ -f "/usr/bin/gdm-settings" ]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
-# Function executed after package installation
-post_install() {
-    # Backup original theme if it doesn't exist
+# Function to apply the appropriate theme based on gdm-settings presence
+apply_appropriate_theme() {
+    # Always create backup if it doesn't exist
     if [ ! -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
         if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource" ]; then
             printMsg "Creating backup of original GNOME shell theme..."
@@ -30,68 +38,132 @@ post_install() {
         fi
     fi
     
-    # Apply custom theme
-    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
-        printMsg "Applying custom GNOME shell theme..."
-        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    # Check gdm-settings status and apply appropriate theme
+    if is_gdm_settings_installed; then
+        printMsg "gdm-settings detected - applying default theme for compatibility..."
+        if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+            cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+            chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        fi
+        return 1  # Signal that default theme was applied
+    else
+        printMsg "Applying BigCommunity custom wallpaper sync theme..."
+        if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
+            cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+            chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        fi
+        return 0  # Signal that custom theme was applied
     fi
+}
+
+# Function to manage wallpaper monitor service
+manage_wallpaper_service() {
+    local action=$1
     
-    # Enable and start the service
-    printMsg "Enabling wallpaper monitor service..."
-    systemctl enable wallpaper-monitor.service
+    case $action in
+        "enable")
+            if is_gdm_settings_installed; then
+                printMsg "gdm-settings detected - wallpaper sync disabled for compatibility"
+                systemctl disable wallpaper-monitor.service >/dev/null 2>&1
+                systemctl stop wallpaper-monitor.service >/dev/null 2>&1
+            else
+                printMsg "Enabling BigCommunity wallpaper sync service..."
+                systemctl enable wallpaper-monitor.service
+                printMsg "Starting wallpaper sync service..."
+                systemctl start wallpaper-monitor.service
+            fi
+            ;;
+        "restart")
+            if is_gdm_settings_installed; then
+                printMsg "gdm-settings present - keeping wallpaper sync disabled"
+                systemctl stop wallpaper-monitor.service >/dev/null 2>&1
+                systemctl disable wallpaper-monitor.service >/dev/null 2>&1
+            else
+                printMsg "Reloading systemd configuration..."
+                systemctl daemon-reload
+                printMsg "Restarting BigCommunity wallpaper sync..."
+                systemctl restart wallpaper-monitor.service
+            fi
+            ;;
+        "stop")
+            printMsg "Stopping wallpaper sync service..."
+            systemctl stop wallpaper-monitor.service >/dev/null 2>&1
+            printMsg "Disabling wallpaper sync service..."
+            systemctl disable wallpaper-monitor.service >/dev/null 2>&1
+            ;;
+    esac
+}
+
+# Function executed before package installation
+pre_install() {
+    printMsg "Preparing BigCommunity GNOME configuration..."
+    if is_gdm_settings_installed; then
+        printMsg "Note: gdm-settings detected - will configure for compatibility mode"
+    fi
+}
+
+# Function executed after package installation
+post_install() {
+    apply_appropriate_theme
+    theme_result=$?
     
-    printMsg "Starting wallpaper monitor service..."
-    systemctl start wallpaper-monitor.service
+    manage_wallpaper_service "enable"
     
-    printMsg "GNOME configuration completed successfully"
+    if [ $theme_result -eq 0 ]; then
+        printMsg "BigCommunity GNOME ready - wallpaper sync active!"
+    else
+        printMsg "BigCommunity GNOME ready - compatibility mode with gdm-settings"
+    fi
 }
 
 # Function executed before package upgrade
 pre_upgrade() {
-    # Nothing special needed before upgrade
-    printMsg "Preparing for package upgrade..."
+    printMsg "Preparing BigCommunity GNOME upgrade..."
+    if is_gdm_settings_installed; then
+        printMsg "Note: gdm-settings detected - will maintain compatibility mode"
+    fi
 }
 
 # Function executed after package upgrade
 post_upgrade() {
-    # Apply custom theme again
-    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
-        printMsg "Reapplying custom GNOME shell theme..."
-        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    apply_appropriate_theme
+    theme_result=$?
+    
+    manage_wallpaper_service "restart"
+    
+    if [ $theme_result -eq 0 ]; then
+        printMsg "BigCommunity GNOME upgraded - wallpaper sync active!"
+    else
+        printMsg "BigCommunity GNOME upgraded - compatibility mode with gdm-settings"
     fi
-    
-    printMsg "Reloading systemd configuration..."
-    systemctl daemon-reload
-    
-    printMsg "Restarting wallpaper monitor service..."
-    systemctl restart wallpaper-monitor.service
-    
-    printMsg "GNOME configuration upgrade completed successfully"
 }
 
 # Function executed before package removal
 pre_remove() {
-    printMsg "Stopping wallpaper monitor service..."
-    systemctl stop wallpaper-monitor.service
+    printMsg "WARNING: Removing BigCommunity GNOME configuration"
+    printMsg "This may affect system appearance and functionality"
     
-    printMsg "Disabling wallpaper monitor service..."
-    systemctl disable wallpaper-monitor.service
+    manage_wallpaper_service "stop"
     
-    # Restore original theme if it exists
+    # Restore original theme
     if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
         printMsg "Restoring original GNOME shell theme..."
         cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
     fi
 }
 
 # Function executed after package removal
 post_remove() {
-    # Clean up residual files
-    printMsg "Cleaning up remaining files..."
+    printMsg "Cleaning up BigCommunity configuration files..."
     rm -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
     rm -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
     
-    printMsg "Cleanup completed successfully"
+    # Clean up logs
+    rm -f "/var/log/wallpaper-monitor.log"
+    rm -f "/var/log/gdm-wallpaper-updater.log" 
+    rm -f "/var/log/gdm-settings-conflict.log"
+    
+    printMsg "BigCommunity GNOME configuration removed"
+    printMsg "Note: System may require GNOME Shell restart for full cleanup"
 }

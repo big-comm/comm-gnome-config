@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 """
-Wallpaper Monitor Service
+BigCommunity Wallpaper Monitor Service
 This script monitors the user's desktop wallpaper and updates the GDM login screen
-when the wallpaper changes. It also checks for gdm-settings conflicts.
+when the wallpaper changes. Optimized for BigCommunity distro.
 """
 
 import os
@@ -12,23 +12,52 @@ import time
 import subprocess
 import logging
 import signal
-import shutil
 
 # Configure logging
 logging.basicConfig(
     filename='/var/log/wallpaper-monitor.log',
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - BigCommunity - %(levelname)s - %(message)s'
 )
 
 # Global variable for execution control
 running = True
+
+# Lock file to coordinate with other scripts
+LOCK_FILE = "/var/lock/gdm-theme-operations.lock"
 
 def signal_handler(sig, frame):
     """Signal handler for safe shutdown"""
     global running
     logging.info(f"Signal received: {sig}")
     running = False
+
+def acquire_lock(timeout=10):
+    """Acquire lock to coordinate with other scripts"""
+    try:
+        lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_WRONLY | os.O_EXCL)
+        os.write(lock_fd, str(os.getpid()).encode())
+        return lock_fd
+    except OSError:
+        count = 0
+        while count < timeout:
+            try:
+                lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_WRONLY | os.O_EXCL)
+                os.write(lock_fd, str(os.getpid()).encode())
+                return lock_fd
+            except OSError:
+                time.sleep(1)
+                count += 1
+        return None
+
+def release_lock(lock_fd):
+    """Release the lock"""
+    try:
+        if lock_fd is not None:
+            os.close(lock_fd)
+            os.unlink(LOCK_FILE)
+    except:
+        pass
 
 def run_command(cmd, shell=False):
     """Execute command and return output or None on error"""
@@ -51,87 +80,31 @@ def run_command(cmd, shell=False):
 def is_gdm_settings_installed():
     """Check if gdm-settings is installed"""
     try:
-        # Check if gdm-settings package is installed (Arch/Manjaro)
         result = run_command("pacman -Qi gdm-settings", shell=True)
         if result is not None:
             return True
-            
-        # Check if gdm-settings binary exists
         if os.path.exists("/usr/bin/gdm-settings"):
             return True
-            
-        # Check if gdm-settings is running
-        result = run_command("pgrep -f gdm-settings", shell=True)
-        if result is not None:
-            return True
-            
         return False
     except Exception as e:
         logging.error(f"Error checking gdm-settings: {str(e)}")
         return False
 
-def restore_default_theme():
-    """Restore the default GDM theme"""
-    try:
-        default_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
-        current_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-        
-        if os.path.exists(default_theme):
-            shutil.copy(default_theme, current_theme)
-            os.chmod(current_theme, 0o644)
-            logging.info("Default GDM theme restored due to gdm-settings presence")
-            return True
-        else:
-            logging.warning("Default theme backup not found")
-            return False
-    except Exception as e:
-        logging.error(f"Error restoring default theme: {str(e)}")
+def should_monitor_wallpaper():
+    """Check if we should monitor wallpaper (gdm-settings not installed)"""
+    if is_gdm_settings_installed():
         return False
-
-def disable_service():
-    """Disable the wallpaper monitor service"""
-    try:
-        run_command("systemctl disable wallpaper-monitor.service", shell=True)
-        logging.info("Wallpaper monitor service disabled due to gdm-settings")
-        return True
-    except Exception as e:
-        logging.error(f"Error disabling service: {str(e)}")
+    
+    # Check if our theme files exist
+    if not os.path.exists("/usr/share/gnome-shell/gnome-shell-theme.gresource.default"):
+        logging.warning("BigCommunity: Default theme backup not found")
         return False
-
-def enable_service():
-    """Enable the wallpaper monitor service"""
-    try:
-        run_command("systemctl enable wallpaper-monitor.service", shell=True)
-        logging.info("Wallpaper monitor service enabled - gdm-settings not detected")
-        return True
-    except Exception as e:
-        logging.error(f"Error enabling service: {str(e)}")
-        return False
-
-def restore_custom_theme():
-    """Restore the custom GDM theme"""
-    try:
-        custom_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
-        current_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-        
-        if os.path.exists(custom_theme):
-            shutil.copy(custom_theme, current_theme)
-            os.chmod(current_theme, 0o644)
-            logging.info("Custom GDM theme restored - gdm-settings not detected")
-            # Update with current wallpaper
-            run_command(['/usr/bin/comm-update-gdm-wallpaper'])
-            return True
-        else:
-            logging.warning("Custom theme backup not found")
-            return False
-    except Exception as e:
-        logging.error(f"Error restoring custom theme: {str(e)}")
-        return False
+    
+    return True
 
 def get_active_session():
     """Get active session that isn't gdm"""
     try:
-        # Try up to 3 times with a short delay between attempts
         for attempt in range(3):
             try:
                 output = subprocess.run(['loginctl', 'list-sessions'], 
@@ -141,19 +114,14 @@ def get_active_session():
                     parts = line.split()
                     if len(parts) >= 3 and parts[2] != "gdm" and "seat" in line:
                         return parts[0]  # Session ID
-                        
                 return None
-                
             except subprocess.CalledProcessError as e:
-                # If this isn't our last attempt, wait and try again
                 if attempt < 2:
                     logging.warning(f"loginctl error (attempt {attempt+1}/3): {e.stderr.strip()}")
-                    time.sleep(2)  # Wait 2 seconds before retrying
+                    time.sleep(2)
                 else:
-                    # On the last attempt, log as error and return None
                     logging.error(f"Failed to get session after 3 attempts: {e.stderr.strip()}")
                     return None
-                    
     except Exception as e:
         logging.error(f"Error getting active session: {str(e)}")
         return None
@@ -192,7 +160,6 @@ def get_dbus_address(user):
             var_str = var.decode('utf-8', errors='ignore')
             if var_str.startswith('DBUS_SESSION_BUS_ADDRESS='):
                 return var_str.split('=', 1)[1]
-                
         return None
     except Exception as e:
         logging.error(f"Error getting DBUS address: {str(e)}")
@@ -207,14 +174,12 @@ def get_user_wallpaper(user, display, dbus_address):
         cmd = f"su - {user} -c 'DISPLAY={display} DBUS_SESSION_BUS_ADDRESS=\"{dbus_address}\" dconf read /org/gnome/desktop/background/picture-uri'"
         wallpaper_uri = run_command(cmd, shell=True)
         
-        # If not found, try picture-uri-dark (for dark themes)
         if not wallpaper_uri or wallpaper_uri == "''":
             cmd = f"su - {user} -c 'DISPLAY={display} DBUS_SESSION_BUS_ADDRESS=\"{dbus_address}\" dconf read /org/gnome/desktop/background/picture-uri-dark'"
             wallpaper_uri = run_command(cmd, shell=True)
             
         if not wallpaper_uri or wallpaper_uri == "''":
             return None
-            
         return wallpaper_uri
     except Exception as e:
         logging.error(f"Error getting wallpaper: {str(e)}")
@@ -224,124 +189,91 @@ def main():
     """Main function to monitor wallpaper changes"""
     global running
     
-    # Configure signal handling
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
-    # Check if running as root
     if os.geteuid() != 0:
         logging.error("This script must be run as root")
         print("This script must be run as root")
         sys.exit(1)
     
-    logging.info("Starting wallpaper monitoring with gdm-settings detection")
+    logging.info("BigCommunity wallpaper sync started")
     
-    # Initial check for gdm-settings
-    gdm_settings_was_installed = is_gdm_settings_installed()
-    
-    if gdm_settings_was_installed:
-        logging.info("gdm-settings detected - disabling wallpaper monitoring")
-        restore_default_theme()
-        # Don't exit, just set a flag to skip monitoring but continue checking
-        monitoring_enabled = False
+    # Initial status check
+    if should_monitor_wallpaper():
+        logging.info("BigCommunity wallpaper sync active - monitoring enabled")
     else:
-        logging.info("gdm-settings not detected - enabling wallpaper monitoring")
-        restore_custom_theme()
-        monitoring_enabled = True
+        logging.info("BigCommunity wallpaper sync in compatibility mode - gdm-settings detected")
     
     while running:
         try:
-            # Check for gdm-settings status change
-            gdm_settings_is_installed = is_gdm_settings_installed()
+            # Check if we should continue monitoring
+            if not should_monitor_wallpaper():
+                logging.debug("Monitoring disabled - gdm-settings present")
+                time.sleep(10)  # Check less frequently when disabled
+                continue
             
-            # Handle gdm-settings installation
-            if gdm_settings_is_installed and not gdm_settings_was_installed:
-                logging.info("gdm-settings installed - switching to default theme")
-                restore_default_theme()
-                monitoring_enabled = False
-                gdm_settings_was_installed = True
-                
-            # Handle gdm-settings removal
-            elif not gdm_settings_is_installed and gdm_settings_was_installed:
-                logging.info("gdm-settings removed - restoring custom theme monitoring")
-                restore_custom_theme()
-                monitoring_enabled = True
-                gdm_settings_was_installed = False
+            # Get active session
+            session_id = get_active_session()
+            if not session_id:
+                logging.debug("No active session found")
+                time.sleep(5)
+                continue
             
-            # Only monitor wallpaper if gdm-settings is not installed
-            if monitoring_enabled:
-                # Get active session
-                session_id = get_active_session()
-                if not session_id:
-                    logging.debug("No active session found")
-                    time.sleep(5)
-                    continue
+            user = get_session_user(session_id)
+            if not user:
+                logging.debug(f"No user found for session {session_id}")
+                time.sleep(5)
+                continue
                 
-                # Get session user
-                user = get_session_user(session_id)
-                if not user:
-                    logging.debug(f"No user found for session {session_id}")
-                    time.sleep(5)
-                    continue
-                    
-                # Get session display
-                display = get_session_display(session_id)
+            display = get_session_display(session_id)
+            dbus_address = get_dbus_address(user)
+            if not dbus_address:
+                logging.debug(f"Could not get DBUS address for user {user}")
+                time.sleep(5)
+                continue
                 
-                # Get DBUS address
-                dbus_address = get_dbus_address(user)
-                if not dbus_address:
-                    logging.debug(f"Could not get DBUS address for user {user}")
-                    time.sleep(5)
-                    continue
-                    
-                logging.debug(f"Monitoring wallpaper for user {user} in session {session_id}")
-                
-                old_wallpaper = None
-                
-                # Monitor wallpaper changes for this user
-                wallpaper_check_cycles = 0
-                while running and monitoring_enabled:
-                    try:
-                        # Check gdm-settings status every 10 cycles (50 seconds)
-                        if wallpaper_check_cycles % 10 == 0:
-                            if is_gdm_settings_installed():
-                                logging.info("gdm-settings detected during monitoring - switching to default theme")
-                                restore_default_theme()
-                                monitoring_enabled = False
-                                gdm_settings_was_installed = True
-                                break
-                        
-                        # Check if session is still active
-                        if not get_active_session() == session_id:
-                            logging.info(f"Session {session_id} is no longer active")
-                            break
-                            
-                        # Get current wallpaper
-                        new_wallpaper = get_user_wallpaper(user, display, dbus_address)
-                        
-                        # If changed, update theme
-                        if new_wallpaper != old_wallpaper:
-                            logging.info(f"Wallpaper changed to: {new_wallpaper}")
-                            result = run_command(['/usr/bin/comm-update-gdm-wallpaper'])
-                            if result is not None:
-                                old_wallpaper = new_wallpaper
-                                
-                        wallpaper_check_cycles += 1
-                        time.sleep(5)
-                        
-                    except Exception as e:
-                        logging.error(f"Error during monitoring: {str(e)}")
+            logging.debug(f"BigCommunity: Monitoring wallpaper for user {user}")
+            
+            old_wallpaper = None
+            
+            # Monitor this session
+            while running and should_monitor_wallpaper():
+                try:
+                    if not get_active_session() == session_id:
+                        logging.info(f"Session {session_id} is no longer active")
                         break
-            else:
-                # gdm-settings is installed, just check periodically if it's removed
-                time.sleep(10)
+                        
+                    new_wallpaper = get_user_wallpaper(user, display, dbus_address)
+                    
+                    if new_wallpaper != old_wallpaper:
+                        logging.info(f"BigCommunity: Wallpaper changed to: {new_wallpaper}")
+                        
+                        # Acquire lock before updating theme
+                        lock_fd = acquire_lock(5)
+                        if lock_fd is not None:
+                            try:
+                                result = run_command(['/usr/bin/comm-update-gdm-wallpaper'])
+                                if result is not None:
+                                    old_wallpaper = new_wallpaper
+                                    logging.info("BigCommunity: GDM wallpaper updated successfully")
+                            finally:
+                                release_lock(lock_fd)
+                        else:
+                            logging.warning("Could not acquire lock for theme update")
+                                
+                    time.sleep(5)
+                    
+                except Exception as e:
+                    logging.error(f"Error during monitoring: {str(e)}")
+                    break
                     
         except Exception as e:
             logging.error(f"Error in main loop: {str(e)}")
             
         time.sleep(5)
     
-    logging.info("Stopping wallpaper monitoring")
+    logging.info("BigCommunity wallpaper sync stopped")
 
 if __name__ == "__main__":
     main()

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 """
-GDM Wallpaper Updater
+BigCommunity GDM Wallpaper Updater
 This script updates the GDM login screen to use the current user's wallpaper.
-It also checks for gdm-settings conflicts.
+Optimized for BigCommunity distro with gdm-settings conflict detection.
 """
 
 import os
@@ -17,7 +17,7 @@ import logging
 logging.basicConfig(
     filename='/var/log/gdm-wallpaper-updater.log',
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - BigCommunity - %(levelname)s - %(message)s'
 )
 
 def run_command(cmd, shell=False):
@@ -64,10 +64,10 @@ def restore_default_theme():
         if os.path.exists(default_theme):
             shutil.copy(default_theme, current_theme)
             os.chmod(current_theme, 0o644)
-            logging.info("Default GDM theme restored due to gdm-settings presence")
+            logging.info("BigCommunity: Default GDM theme restored for gdm-settings compatibility")
             return True
         else:
-            logging.warning("Default theme backup not found")
+            logging.warning("BigCommunity: Default theme backup not found")
             return False
     except Exception as e:
         logging.error(f"Error restoring default theme: {str(e)}")
@@ -94,11 +94,11 @@ def get_display_for_user(user):
         return ":0"
 
 def main():
-    logging.info("Starting GDM theme update")
+    logging.info("BigCommunity: Starting GDM wallpaper update")
     
     # Check if gdm-settings is installed
     if is_gdm_settings_installed():
-        logging.info("gdm-settings detected - skipping wallpaper update and restoring default theme")
+        logging.info("BigCommunity: gdm-settings detected - applying default theme for compatibility")
         restore_default_theme()
         return
     
@@ -134,7 +134,7 @@ def main():
             
         # Remove file:// prefix
         wallpaper_file = wallpaper.replace("file://", "")
-        logging.info(f"Found wallpaper: {wallpaper_file}")
+        logging.info(f"BigCommunity: Found wallpaper: {wallpaper_file}")
         
         # Copy and extract resources
         os.chdir(temp_dir)
@@ -205,9 +205,9 @@ def main():
         # Install new theme only if gdm-settings is not present
         if not is_gdm_settings_installed():
             shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource")
-            logging.info("GDM theme successfully updated")
+            logging.info("BigCommunity: GDM wallpaper theme successfully updated")
         else:
-            logging.info("gdm-settings detected after processing - theme not applied")
+            logging.info("BigCommunity: gdm-settings detected after processing - theme not applied")
         
     except Exception as e:
         logging.error(f"Error updating GDM theme: {str(e)}")
