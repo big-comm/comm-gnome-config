@@ -3,7 +3,7 @@
 pkgname=comm-gnome-config
 pkgdesc="Package configuration Desktop Gnome"
 # Uncomment and edit the following lines as needed
-depends=('comm-skel' 'comm-shell-orchis' 'glib2-devel' 'python' 'imagemagick')
+depends=('comm-skel' 'comm-shell-orchis' 'glib2-devel' 'nautilus-python' 'python' 'imagemagick')
 #makedepends=('')
 #optdepends=('')
 conflicts=('big-skel')
