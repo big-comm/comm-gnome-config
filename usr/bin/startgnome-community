@@ -50,7 +50,7 @@ if [ ! -f "$HOME/.biglinux-shell-changed" ]; then
 fi
 
 # Faster AMD GPU
-[[ -z $RADV_PERFTEST ]] && export RADV_PERFTEST="sam,nggc,ext_ms"
+
 
 # OBS Studio game capture with vulkan
 if [ -e "/usr/bin/obs-vkcapture" ]; then
