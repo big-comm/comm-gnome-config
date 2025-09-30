@@ -73,11 +73,6 @@ currentTheme=$(dconf read $dconfPath)
 # Enable automatic mounting of devices
 gsettings set org.gnome.desktop.media-handling automount true
 
-# Temporary solution to change the default terminal from gnome to ashyterm
-if [ ! -e "/usr/bin/kgx" ]; then
-    sudo ln -s /usr/bin/ashyterm /usr/bin/kgx
-fi
-
 ### Execute in LiveCD
 if [ -e /usr/bin/startbiglive ]; then
     # Revert variables to Gnome
