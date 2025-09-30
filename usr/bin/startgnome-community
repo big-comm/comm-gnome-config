@@ -75,7 +75,7 @@ gsettings set org.gnome.desktop.media-handling automount true
 
 # Temporary solution to change the default terminal from gnome to ashyterm
 if [ ! -e "/usr/bin/kgx" ]; then
-    ln -s /usr/bin/ashyterm /usr/bin/kgx
+    sudo ln -s /usr/bin/ashyterm /usr/bin/kgx
 fi
 
 ### Execute in LiveCD
