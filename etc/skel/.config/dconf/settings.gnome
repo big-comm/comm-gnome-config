@@ -221,7 +221,7 @@ name='Office.directory'
 translate=true
 
 [org/gnome/desktop/app-folders/folders/Settings]
-apps=['org.gnome.Settings.desktop', 'org.gnome.tweaks.desktop', 'gufw.desktop', 'org.manjaro.pamac.manager.desktop', 'org.gnome.SystemMonitor.desktop', 'gnome-system-monitor.desktop', 'fma-config-tool.desktop', 'timeshift-gtk.desktop', 'system-config-printer-only-jobs.desktop', 'hplip.desktop', 'hp-uiscan.desktop', 'cups.desktop', 'kvantummanager.desktop', 'pamac--updates.desktop', 'appimagelaunchersettings.desktop', 'ca.desrt.dconf-editor.desktop', 'org.gnome.Extensions.desktop', 'qefientrymanager.desktop']
+apps=['org.gnome.Settings.desktop', 'org.gnome.tweaks.desktop', 'gufw.desktop', 'org.manjaro.pamac.manager.desktop', 'org.gnome.SystemMonitor.desktop', 'gnome-system-monitor.desktop', 'fma-config-tool.desktop', 'timeshift-gtk.desktop', 'system-config-printer-only-jobs.desktop', 'hplip.desktop', 'hp-uiscan.desktop', 'cups.desktop', 'kvantummanager.desktop', 'pamac--updates.desktop', 'appimagelaunchersettings.desktop', 'ca.desrt.dconf-editor.desktop', 'org.gnome.Extensions.desktop', 'qefientrymanager.desktop', 'com.sidevesh.Luminance.desktop']
 categories=['Settings']
 excluded-apps=['big-store.desktop', 'bigsettings.desktop']
 name='Settings.directory'
