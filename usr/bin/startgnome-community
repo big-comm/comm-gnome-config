@@ -135,6 +135,15 @@ switch_mimeapps_config() {
 switch_dconf_config() {
     local desktop_env=$1
     
+    # Caminho para o arquivo que armazena o último desktop usado
+    local last_desktop_env_file="$HOME/.config/last_desktop.env"
+    local last_desktop=""
+
+    # Ler o último desktop usado, se o arquivo existir
+    if [ -f "$last_desktop_env_file" ]; then
+        last_desktop=$(cat "$last_desktop_env_file")
+    fi
+    
     # Ensure directory exists
     mkdir -p "$dconf_dir"
     
@@ -144,8 +153,8 @@ switch_dconf_config() {
     
     # Debug logs
     log_message "Script started"
-    log_message "Desktop Environment: $desktop_env"
-    log_message "XDG_CURRENT_DESKTOP: $XDG_CURRENT_DESKTOP"
+    log_message "Current Desktop Environment: $desktop_env"
+    log_message "Last Desktop Environment: $last_desktop"
     
     # Kill any existing dconf-watch processes
     if pgrep -f "dconf watch /" > /dev/null; then
@@ -154,18 +163,23 @@ switch_dconf_config() {
         sleep 1
     fi
 
-    log_message "Detected $desktop_env environment"
-    
-    # Load latest configuration for the detected desktop environment
-    if [ -f "$dconf_dir/settings.$desktop_env" ]; then
-        log_message "Loading existing $desktop_env settings"
-        dconf reset -f /
-        dconf load / < "$dconf_dir/settings.$desktop_env"
+    # Compare desktop to latest. Only load settings if differents.
+    if [ "$desktop_env" != "$last_desktop" ]; then
+        log_message "Desktop environment changed from '$last_desktop' to '$desktop_env'. Loading settings."
+        
+        # Load latest configuration for the detected desktop environment
+        if [ -f "$dconf_dir/settings.$desktop_env" ]; then
+            log_message "Loading existing $desktop_env settings from $dconf_dir/settings.$desktop_env"
+            dconf reset -f /
+            dconf load / < "$dconf_dir/settings.$desktop_env"
+        else
+            log_message "No existing $desktop_env settings found"
+        fi
     else
-        log_message "No existing $desktop_env settings found"
+        log_message "Same desktop environment detected. Skipping dconf load to preserve user settings."
     fi
     
-    # Monitor changes in a separate process
+    # Changes monitor keeps active for further changes
     (
         log_message "Starting $desktop_env settings monitor"
         while true; do
@@ -206,11 +220,10 @@ main() {
     log_message "Detected desktop: $current_desktop"
     switch_mimeapps_config "$current_desktop"
     switch_dconf_config "$current_desktop"
-}
 
-# Run main script
-main
-# --- END Configuration dconf
+    # Save current desktop for future login
+    echo "$current_desktop" > "$HOME/.config/last_desktop.env"
+}
 
 
 ### Execute in LiveCD
