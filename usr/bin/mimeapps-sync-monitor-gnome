@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# mimeapps-sync-monitor-gnome - Monitor and sync mimeapps.list for GNOME
+# Part of comm-gnome-config package
+
+set -euo pipefail
+
+DESKTOP_ENV="gnome"
+MIMEAPPS_DIR="${HOME}/.config"
+MIMEAPPS_FILE="${MIMEAPPS_DIR}/mimeapps.list"
+MIMEAPPS_BACKUP="${MIMEAPPS_DIR}/${DESKTOP_ENV}.mimeapps.list"
+LOG_FILE="/tmp/mimeapps-sync-${DESKTOP_ENV}.log"
+
+# Logging function
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${DESKTOP_ENV}] $1" | tee -a "${LOG_FILE}"
+}
+
+# Debounce mechanism
+LAST_SAVE=0
+DEBOUNCE_SECONDS=2
+
+save_mimeapps() {
+    if [ ! -f "${MIMEAPPS_FILE}" ]; then
+        return
+    fi
+
+    local current_time=$(date +%s)
+    local time_diff=$((current_time - LAST_SAVE))
+
+    if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ]; then
+        return
+    fi
+
+    log_message "Saving mimeapps to ${MIMEAPPS_BACKUP}"
+
+    # Atomic write
+    if cp "${MIMEAPPS_FILE}" "${MIMEAPPS_BACKUP}.tmp" 2>/dev/null; then
+        mv "${MIMEAPPS_BACKUP}.tmp" "${MIMEAPPS_BACKUP}"
+        LAST_SAVE=${current_time}
+        log_message "Mimeapps saved successfully"
+    else
+        log_message "ERROR: Failed to save mimeapps"
+        rm -f "${MIMEAPPS_BACKUP}.tmp"
+    fi
+}
+
+# Main monitoring loop
+log_message "Starting mimeapps monitor for ${DESKTOP_ENV}"
+log_message "Monitoring file: ${MIMEAPPS_FILE}"
+
+# Initial save
+save_mimeapps
+
+# Check if inotifywait is available
+if command -v inotifywait >/dev/null 2>&1; then
+    log_message "Using inotifywait for monitoring"
+    while true; do
+        inotifywait -e modify,move,create "${MIMEAPPS_FILE}" 2>/dev/null
+        log_message "Mimeapps change detected"
+        save_mimeapps
+    done
+else
+    log_message "inotifywait not available, using polling (install inotify-tools for better performance)"
+    while true; do
+        sleep 2
+        if [ -f "${MIMEAPPS_FILE}" ]; then
+            save_mimeapps
+        fi
+    done
+fi
+
+log_message "Monitor stopped"

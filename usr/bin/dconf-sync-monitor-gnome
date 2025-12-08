@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# dconf-sync-monitor-gnome - Monitor and sync dconf settings for GNOME
+# Part of comm-gnome-config package
+
+set -euo pipefail
+
+DESKTOP_ENV="gnome"
+DCONF_DIR="${HOME}/.config/dconf"
+SETTINGS_FILE="${DCONF_DIR}/settings.${DESKTOP_ENV}"
+LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
+
+# Ensure directory exists
+mkdir -p "${DCONF_DIR}"
+
+# Logging function
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${DESKTOP_ENV}] $1" | tee -a "${LOG_FILE}"
+}
+
+# Debounce mechanism - avoid saving too frequently
+LAST_SAVE=0
+DEBOUNCE_SECONDS=2
+
+save_settings() {
+    local current_time=$(date +%s)
+    local time_diff=$((current_time - LAST_SAVE))
+
+    if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ]; then
+        return
+    fi
+
+    log_message "Saving dconf settings to ${SETTINGS_FILE}"
+
+    # Atomic write using temp file
+    if dconf dump / > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
+        mv "${SETTINGS_FILE}.tmp" "${SETTINGS_FILE}"
+        LAST_SAVE=${current_time}
+        log_message "Settings saved successfully"
+    else
+        log_message "ERROR: Failed to dump dconf settings"
+        rm -f "${SETTINGS_FILE}.tmp"
+    fi
+}
+
+# Main monitoring loop
+log_message "Starting dconf monitor for ${DESKTOP_ENV}"
+log_message "Settings file: ${SETTINGS_FILE}"
+
+# Initial save to ensure we have current state
+save_settings
+
+# Monitor dconf changes
+log_message "Monitoring dconf changes..."
+dconf watch / | while read -r change; do
+    log_message "Change detected: ${change}"
+    save_settings
+done
+
+log_message "Monitor stopped"

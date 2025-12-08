@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# mimeapps-sync-stop-gnome - Final save when stopping mimeapps sync service for GNOME
+# Part of comm-gnome-config package
+
+set -euo pipefail
+
+DESKTOP_ENV="gnome"
+MIMEAPPS_DIR="${HOME}/.config"
+MIMEAPPS_FILE="${MIMEAPPS_DIR}/mimeapps.list"
+MIMEAPPS_BACKUP="${MIMEAPPS_DIR}/${DESKTOP_ENV}.mimeapps.list"
+LOG_FILE="/tmp/mimeapps-sync-${DESKTOP_ENV}.log"
+
+# Logging function
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${DESKTOP_ENV}] $1" | tee -a "${LOG_FILE}"
+}
+
+log_message "Stopping mimeapps sync - performing final save"
+
+if [ ! -f "${MIMEAPPS_FILE}" ]; then
+    log_message "No mimeapps.list found, nothing to save"
+    exit 0
+fi
+
+# Final save with retry logic
+for attempt in {1..3}; do
+    if cp "${MIMEAPPS_FILE}" "${MIMEAPPS_BACKUP}.tmp" 2>/dev/null; then
+        mv "${MIMEAPPS_BACKUP}.tmp" "${MIMEAPPS_BACKUP}"
+        log_message "Final mimeapps saved successfully (attempt ${attempt})"
+        exit 0
+    else
+        log_message "WARNING: Failed to save mimeapps (attempt ${attempt}/3)"
+        sleep 0.5
+    fi
+done
+
+log_message "ERROR: Failed to save final mimeapps after 3 attempts"
+rm -f "${MIMEAPPS_BACKUP}.tmp"
+exit 1

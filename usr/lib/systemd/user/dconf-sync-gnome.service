@@ -1,0 +1,15 @@
+[Unit]
+Description=GNOME dconf settings synchronization service
+Documentation=man:dconf(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/dconf-sync-monitor-gnome
+ExecStop=/usr/bin/dconf-sync-stop-gnome
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

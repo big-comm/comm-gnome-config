@@ -78,152 +78,102 @@ gsettings set org.gnome.desktop.media-handling automount true
 # Base directories for configurations
 dconf_dir="$HOME/.config/dconf"
 mimeapps_dir="$HOME/.config"
-log_file="/tmp/dconf-switch.log"
+log_file="/tmp/dconf-switch-gnome.log"
 
 # Function to log messages
 log_message() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$log_file"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [GNOME] $1" | tee -a "$log_file"
 }
 
-# Function to manage mimeapps configuration
-switch_mimeapps_config() {
-    local desktop_env=$1
-    
-    log_message "Managing mimeapps for $desktop_env environment"
-    
-    # Kill any existing mimeapps-watch processes
-    if pgrep -f "mimeapps-watch-$desktop_env" > /dev/null; then
-        log_message "Killing existing mimeapps watch processes"
-        pkill -f "mimeapps-watch-$desktop_env"
-        sleep 1
-    fi
-    
+# Function to load mimeapps configuration
+load_mimeapps_config() {
+    log_message "Loading GNOME mimeapps configuration"
+
     # Load specific mimeapps configuration
-    if [ -f "$mimeapps_dir/$desktop_env.mimeapps.list" ]; then
-        log_message "Loading $desktop_env mimeapps configuration"
-        cp "$mimeapps_dir/$desktop_env.mimeapps.list" "$mimeapps_dir/mimeapps.list"
+    if [ -f "$mimeapps_dir/gnome.mimeapps.list" ]; then
+        log_message "Found existing GNOME mimeapps, loading..."
+        cp "$mimeapps_dir/gnome.mimeapps.list" "$mimeapps_dir/mimeapps.list"
     else
-        log_message "No specific mimeapps configuration found for $desktop_env"
-        # Create empty file if none exists
+        log_message "No existing GNOME mimeapps found, creating empty file"
         touch "$mimeapps_dir/mimeapps.list"
     fi
-    
-    # Monitor mimeapps changes in a separate process
-    (
-        log_message "Starting mimeapps monitor for $desktop_env"
-        while true; do
-            if command -v inotifywait >/dev/null 2>&1; then
-                # Use inotifywait if available
-                inotifywait -e modify,move,create "$mimeapps_dir/mimeapps.list" 2>/dev/null
-            else
-                # Fallback to polling every 2 seconds
-                sleep 2
-            fi
-            
-            if [ -f "$mimeapps_dir/mimeapps.list" ]; then
-                log_message "Mimeapps change detected"
-                log_message "Saving to: $mimeapps_dir/$desktop_env.mimeapps.list"
-                cp "$mimeapps_dir/mimeapps.list" "$mimeapps_dir/$desktop_env.mimeapps.list.tmp" && \
-                mv "$mimeapps_dir/$desktop_env.mimeapps.list.tmp" "$mimeapps_dir/$desktop_env.mimeapps.list"
-            fi
-        done
-    ) &
-    echo $! > "/tmp/mimeapps-watch-$desktop_env.pid"
 }
 
-# Function to switch dconf configurations between desktop environments
-switch_dconf_config() {
-    local desktop_env=$1
-    
-    # Caminho para o arquivo que armazena o último desktop usado
-    local last_desktop_env_file="$HOME/.config/last_desktop.env"
-    local last_desktop=""
-
-    # Ler o último desktop usado, se o arquivo existir
-    if [ -f "$last_desktop_env_file" ]; then
-        last_desktop=$(cat "$last_desktop_env_file")
+# Function to save mimeapps configuration
+save_mimeapps_config() {
+    if [ -f "$mimeapps_dir/mimeapps.list" ]; then
+        log_message "Saving GNOME mimeapps configuration"
+        cp "$mimeapps_dir/mimeapps.list" "$mimeapps_dir/gnome.mimeapps.list.tmp" && \
+        mv "$mimeapps_dir/gnome.mimeapps.list.tmp" "$mimeapps_dir/gnome.mimeapps.list"
     fi
-    
+}
+
+# Function to load dconf configuration
+load_dconf_config() {
     # Ensure directory exists
     mkdir -p "$dconf_dir"
-    
-    # Clear old log
-    echo "" > "$log_file"
-    chmod 666 "$log_file"  # Ensure read/write permissions
-    
-    # Debug logs
-    log_message "Script started"
-    log_message "Current Desktop Environment: $desktop_env"
-    log_message "Last Desktop Environment: $last_desktop"
-    
-    # Kill any existing dconf-watch processes
-    if pgrep -f "dconf watch /" > /dev/null; then
-        log_message "Killing existing dconf watch processes"
-        pkill -f "dconf watch /"
-        sleep 1
-    fi
 
-    # Compare desktop to latest. Only load settings if differents.
-    if [ "$desktop_env" != "$last_desktop" ]; then
-        log_message "Desktop environment changed from '$last_desktop' to '$desktop_env'. Loading settings."
-        
-        # Load latest configuration for the detected desktop environment
-        if [ -f "$dconf_dir/settings.$desktop_env" ]; then
-            log_message "Loading existing $desktop_env settings from $dconf_dir/settings.$desktop_env"
-            dconf reset -f /
-            dconf load / < "$dconf_dir/settings.$desktop_env"
+    log_message "Loading GNOME dconf configuration"
+    log_message "XDG_CURRENT_DESKTOP: $XDG_CURRENT_DESKTOP"
+
+    # Load configuration for GNOME
+    if [ -f "$dconf_dir/settings.gnome" ]; then
+        log_message "Found existing GNOME settings, loading..."
+        log_message "Resetting dconf database"
+        dconf reset -f /
+
+        log_message "Loading settings from: $dconf_dir/settings.gnome"
+        if dconf load / < "$dconf_dir/settings.gnome"; then
+            log_message "GNOME settings loaded successfully"
         else
-            log_message "No existing $desktop_env settings found"
+            log_message "ERROR: Failed to load GNOME settings"
         fi
     else
-        log_message "Same desktop environment detected. Skipping dconf load to preserve user settings."
+        log_message "No existing GNOME settings found - will create on first save"
     fi
-    
-    # Changes monitor keeps active for further changes
-    (
-        log_message "Starting $desktop_env settings monitor"
-        while true; do
-            dconf watch / | while read -r change; do
-                log_message "Change detected: $change"
-                log_message "Saving to: $dconf_dir/settings.$desktop_env"
-                dconf dump / > "$dconf_dir/settings.$desktop_env.tmp" && \
-                mv "$dconf_dir/settings.$desktop_env.tmp" "$dconf_dir/settings.$desktop_env"
-            done
-        done
-    ) &
-    echo $! > "/tmp/dconf-watch.pid"
 }
 
-# Detect current desktop environment
-detect_desktop_env() {
-    if [[ "$XDG_CURRENT_DESKTOP" = *"Cinnamon"* ]] || \
-       [[ "$DESKTOP_SESSION" = "cinnamon" ]] || \
-       [[ "$XDG_SESSION_DESKTOP" = "cinnamon" ]]; then
-        echo "cinnamon"
-    elif [[ "$XDG_CURRENT_DESKTOP" = *"GNOME"* ]] || \
-         [[ "$DESKTOP_SESSION" = "gnome" ]] || \
-         [[ "$XDG_SESSION_DESKTOP" = "gnome" ]]; then
-        echo "gnome"
-    elif [[ "$XDG_CURRENT_DESKTOP" = *"XFCE"* ]] || \
-         [[ "$DESKTOP_SESSION" = "xfce4" ]] || \
-         [[ "$DESKTOP_SESSION" = "xfce" ]] || \
-         [[ "$XDG_SESSION_DESKTOP" = "xfce" ]]; then
-        echo "xfce"
+# Function to start systemd sync services
+start_sync_services() {
+    log_message "Starting sync services..."
+
+    # Start dconf sync service
+    log_message "Starting dconf-sync-gnome.service"
+    if systemctl --user enable dconf-sync-gnome.service 2>/dev/null; then
+        log_message "dconf-sync service enabled"
+    fi
+    if systemctl --user restart dconf-sync-gnome.service 2>/dev/null; then
+        log_message "dconf-sync service started successfully"
     else
-        echo "default"
+        log_message "WARNING: Failed to start dconf-sync service"
+    fi
+
+    # Start mimeapps sync service
+    log_message "Starting mimeapps-sync-gnome.service"
+    if systemctl --user enable mimeapps-sync-gnome.service 2>/dev/null; then
+        log_message "mimeapps-sync service enabled"
+    fi
+    if systemctl --user restart mimeapps-sync-gnome.service 2>/dev/null; then
+        log_message "mimeapps-sync service started successfully"
+    else
+        log_message "WARNING: Failed to start mimeapps-sync service"
     fi
 }
 
 # Main execution
-main() {
-    current_desktop=$(detect_desktop_env)
-    log_message "Detected desktop: $current_desktop"
-    switch_mimeapps_config "$current_desktop"
-    switch_dconf_config "$current_desktop"
+log_message "=========================================="
+log_message "Starting GNOME session configuration"
+log_message "=========================================="
 
-    # Save current desktop for future login
-    echo "$current_desktop" > "$HOME/.config/last_desktop.env"
-}
+# Load configurations
+load_mimeapps_config
+load_dconf_config
+
+# Start monitoring services
+start_sync_services
+
+log_message "GNOME session configuration completed"
+# --- END Configuration dconf
 
 
 ### Execute in LiveCD
