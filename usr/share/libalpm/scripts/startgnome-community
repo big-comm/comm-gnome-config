@@ -1,6 +1,63 @@
 #!/bin/sh
 
-# Add startgnome-community in gnome-session
-if [ "$(grep startgnome-community /usr/bin/gnome-session)" = "" ]; then
-    sed -i '/gnome-session-binary/i . /usr/bin/startgnome-community' /usr/bin/gnome-session
+# Wrapper approach for gnome-session (now a binary instead of script)
+# This script creates a wrapper that loads startgnome-community before launching the real binary
+
+GNOME_SESSION="/usr/bin/gnome-session"
+GNOME_SESSION_REAL="/usr/bin/gnome-session.real"
+
+# Check if gnome-session exists
+if [ ! -e "$GNOME_SESSION" ]; then
+    echo "Warning: $GNOME_SESSION not found, skipping wrapper creation"
+    exit 0
+fi
+
+# Check if it's already a wrapper (contains startgnome-community reference)
+if [ -f "$GNOME_SESSION" ] && grep -q "startgnome-community" "$GNOME_SESSION" 2>/dev/null; then
+    echo "Wrapper already in place, nothing to do"
+    exit 0
+fi
+
+# Check if the real binary backup exists
+if [ -e "$GNOME_SESSION_REAL" ]; then
+    echo "Found existing gnome-session.real, wrapper already created"
+    exit 0
+fi
+
+# Check if gnome-session is a binary (not a text file)
+if file "$GNOME_SESSION" | grep -q "executable\|ELF"; then
+    echo "Detected binary gnome-session, creating wrapper..."
+
+    # Backup the original binary
+    mv "$GNOME_SESSION" "$GNOME_SESSION_REAL"
+
+    # Create wrapper script
+    cat > "$GNOME_SESSION" << 'EOF'
+#!/bin/sh
+
+# BigCommunity GNOME Session Wrapper
+# Loads startgnome-community configuration before starting GNOME session
+
+# Load BigCommunity GNOME configuration
+if [ -f /usr/bin/startgnome-community ]; then
+    . /usr/bin/startgnome-community
+fi
+
+# Execute the real gnome-session binary
+exec /usr/bin/gnome-session.real "$@"
+EOF
+
+    # Make it executable
+    chmod +x "$GNOME_SESSION"
+
+    echo "Wrapper created successfully!"
+    echo "  Original binary moved to: $GNOME_SESSION_REAL"
+    echo "  Wrapper script created at: $GNOME_SESSION"
+else
+    echo "gnome-session is already a script, attempting sed injection..."
+    # Fallback for script-based gnome-session (old approach)
+    if ! grep -q "startgnome-community" "$GNOME_SESSION" 2>/dev/null; then
+        sed -i '/gnome-session-binary/i . /usr/bin/startgnome-community' "$GNOME_SESSION" 2>/dev/null || \
+        echo "Warning: Failed to inject startgnome-community into gnome-session script"
+    fi
 fi

@@ -106,9 +106,15 @@ pre_install() {
 post_install() {
     apply_appropriate_theme
     theme_result=$?
-    
+
+    # Create gnome-session wrapper
+    if [ -f "/usr/share/libalpm/scripts/startgnome-community" ]; then
+        printMsg "Setting up GNOME session integration..."
+        /usr/share/libalpm/scripts/startgnome-community
+    fi
+
     manage_wallpaper_service "enable"
-    
+
     if [ $theme_result -eq 0 ]; then
         printMsg "BigCommunity GNOME ready - wallpaper sync active!"
     else
@@ -128,9 +134,15 @@ pre_upgrade() {
 post_upgrade() {
     apply_appropriate_theme
     theme_result=$?
-    
+
+    # Ensure gnome-session wrapper is in place
+    if [ -f "/usr/share/libalpm/scripts/startgnome-community" ]; then
+        printMsg "Updating GNOME session integration..."
+        /usr/share/libalpm/scripts/startgnome-community
+    fi
+
     manage_wallpaper_service "restart"
-    
+
     if [ $theme_result -eq 0 ]; then
         printMsg "BigCommunity GNOME upgraded - wallpaper sync active!"
     else
@@ -142,9 +154,15 @@ post_upgrade() {
 pre_remove() {
     printMsg "WARNING: Removing BigCommunity GNOME configuration"
     printMsg "This may affect system appearance and functionality"
-    
+
     manage_wallpaper_service "stop"
-    
+
+    # Restore original gnome-session binary (if wrapper was created)
+    if [ -f "/usr/share/libalpm/scripts/startgnome-community-cleanup" ]; then
+        printMsg "Restoring original gnome-session binary..."
+        /usr/share/libalpm/scripts/startgnome-community-cleanup
+    fi
+
     # Restore original theme
     if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
         printMsg "Restoring original GNOME shell theme..."
