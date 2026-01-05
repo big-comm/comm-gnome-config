@@ -1,5 +1,9 @@
+# BigCommunity GNOME Wallpaper Monitor Service
+# Syncs user desktop wallpaper with GDM login screen
+# Requires: wallpaper-monitor Python script
+
 [Unit]
-Description=Wallpaper Monitor for GDM
+Description=BigCommunity Wallpaper Monitor for GDM
 After=display-manager.service
 
 [Service]

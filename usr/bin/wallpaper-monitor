@@ -6,12 +6,12 @@ This script monitors the user's desktop wallpaper and updates the GDM login scre
 when the wallpaper changes. Optimized for BigCommunity distro.
 """
 
+import logging
 import os
+import signal
+import subprocess
 import sys
 import time
-import subprocess
-import logging
-import signal
 
 # Configure logging
 logging.basicConfig(
@@ -56,7 +56,7 @@ def release_lock(lock_fd):
         if lock_fd is not None:
             os.close(lock_fd)
             os.unlink(LOCK_FILE)
-    except:
+    except Exception:
         pass
 
 def run_command(cmd, shell=False):

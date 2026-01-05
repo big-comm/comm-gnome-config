@@ -1,23 +1,43 @@
 #!/bin/sh
+#===============================================================================
+# Script Name: startgnome-community
+# Description: GNOME Desktop Session Initialization for BigLinux Community
+#              Configures environment variables, GPU settings, theme sync,
+#              and dconf/mimeapps management for multi-desktop switching.
+# Package:     comm-gnome-config
+#
+# Dependencies:
+#   - dconf (settings storage)
+#   - gsettings (GNOME settings)
+#   - systemctl (service management)
+#   - kvantum (Qt theming)
+#===============================================================================
 
-# Tests if the card is NVIDIA, if so, uses the value of the variables
+#-------------------------------------------------------------------------------
+# NVIDIA GPU Detection and Workarounds
+# Forces OpenGL renderer and disables Vulkan for compatibility
+#-------------------------------------------------------------------------------
 lspci | grep -qi "vga.*nvidia" && {
-   export GSK_RENDERER=ngl
-   export GDK_DISABLE=vulkan
-   export GDK_GL_DISABLE=buffer-storage
+    export GSK_RENDERER=gl
+    export GDK_DISABLE=vulkan
+    export GDK_GL_DISABLE=buffer-storage
 }
 
-# Defining the default visual style to be used in applications that use Qt
+#-------------------------------------------------------------------------------
+# Qt Application Theming
+#-------------------------------------------------------------------------------
 [[ -z $QT_STYLE_OVERRIDE ]] && export QT_STYLE_OVERRIDE="kvantum"
 [[ -z $QT_QPA_PLATFORMTHEME ]] && export QT_QPA_PLATFORMTHEME="gnome"
 [[ -z $QT_WAYLAND_DECORATION ]] && export QT_WAYLAND_DECORATION="adwaita"
 
-# Apps in electron use wayland
+# Enable Wayland for Electron apps
 [[ -z $ELECTRON_OZONE_PLATFORM_HINT ]] && export ELECTRON_OZONE_PLATFORM_HINT="auto"
 
-# Check system theme to apply if the QT theme is clade or dark
-if [ -f "/usr/share/sync-kde-and-gtk-places/sync-gnome-theme-to-qt.sh" ]; then
-    # Tenta executar 3 vezes com intervalo de 1 segundo
+#-------------------------------------------------------------------------------
+# Sync Qt Theme with GNOME (Dark/Light Mode)
+#-------------------------------------------------------------------------------
+if [[ -f /usr/share/sync-kde-and-gtk-places/sync-gnome-theme-to-qt.sh ]]; then
+    # Retry up to 3 times with 0.7s interval
     for i in {1..3}; do
         if /usr/share/sync-kde-and-gtk-places/sync-gnome-theme-to-qt.sh; then
             logger "sync-gnome-theme-to-qt.sh executed successfully"
@@ -31,66 +51,71 @@ else
     logger "sync-gnome-theme-to-qt.sh not found"
 fi
 
-# If using mesa amber force cairo renderer
+#-------------------------------------------------------------------------------
+# GTK Renderer Selection
+# Use cairo for mesa-amber or virtual machines for stability
+#-------------------------------------------------------------------------------
 if compgen -G /var/lib/pacman/local/mesa-amber-* || systemd-detect-virt -q; then
     [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="cairo"
 else
-    [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="ngl"
+    [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="gl"
 fi
 
-# Force language
-if [ "$LANGUAGE" = "" ]; then
+# Ensure LANGUAGE is set
+if [[ -z "$LANGUAGE" ]]; then
     [[ -z $LANGUAGE ]] && export LANGUAGE=$LANG
 fi
 
-# Checks if the shell has already been changed
-if [ ! -f "$HOME/.biglinux-shell-changed" ]; then
+#-------------------------------------------------------------------------------
+# First Login: Default Shell Configuration
+#-------------------------------------------------------------------------------
+if [[ ! -f "$HOME/.biglinux-shell-changed" ]]; then
     biglinux-change-default-shell bash-power
     touch "$HOME/.biglinux-shell-changed"
 fi
 
-# Faster AMD GPU
-
-
-# OBS Studio game capture with vulkan
-if [ -e "/usr/bin/obs-vkcapture" ]; then
+#-------------------------------------------------------------------------------
+# OBS Studio Vulkan Game Capture Support
+#-------------------------------------------------------------------------------
+if [[ -e /usr/bin/obs-vkcapture ]]; then
     [[ -z $OBS_USE_EGL ]] && export OBS_USE_EGL=1
     [[ -z $OBS_VKCAPTURE ]] && export OBS_VKCAPTURE=1
-    [[ -z $VK_INSTANCE_LAYERS ]] && export VK_INSTANCE_LAYERS="VK_LAYER_OBS_vkcapture_64:VK_LAYER_VALVE_steam_overlay_64" #Fix MangoHUD overlay
+    [[ -z $VK_INSTANCE_LAYERS ]] && export VK_INSTANCE_LAYERS="VK_LAYER_OBS_vkcapture_64:VK_LAYER_VALVE_steam_overlay_64"
 fi
 
-# Keyboard LED
-if [ -e "$HOME/.config/ledkeyboard" ]; then
-   change-keyboard-led on
+#-------------------------------------------------------------------------------
+# Keyboard LED Control
+#-------------------------------------------------------------------------------
+if [[ -e "$HOME/.config/ledkeyboard" ]]; then
+    change-keyboard-led on
 fi
 
-# Define the path to the cursor theme setting in dconf
+#-------------------------------------------------------------------------------
+# Cursor Theme Check
+#-------------------------------------------------------------------------------
 dconfPath=/org/gnome/desktop/interface/cursor-theme
-
-# Get the current cursor theme
 currentTheme=$(dconf read $dconfPath)
 
-# Enable automatic mounting of devices
+# Enable automatic device mounting
 gsettings set org.gnome.desktop.media-handling automount true
 
 
-# --- START Configuration dconf and mimeapps
-# Base directories for configurations
+#-------------------------------------------------------------------------------
+# DConf and MimeApps Multi-Desktop Switching Support
+# Allows users to switch between GNOME, Cinnamon, and XFCE while preserving
+# desktop-specific settings for each environment.
+#-------------------------------------------------------------------------------
 dconf_dir="$HOME/.config/dconf"
 mimeapps_dir="$HOME/.config"
 log_file="/tmp/dconf-switch-gnome.log"
 
-# Function to log messages
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [GNOME] $1" | tee -a "$log_file"
 }
 
-# Function to load mimeapps configuration
 load_mimeapps_config() {
     log_message "Loading GNOME mimeapps configuration"
-
-    # Load specific mimeapps configuration
-    if [ -f "$mimeapps_dir/gnome.mimeapps.list" ]; then
+    if [[ -f "$mimeapps_dir/gnome.mimeapps.list" ]]; then
         log_message "Found existing GNOME mimeapps, loading..."
         cp "$mimeapps_dir/gnome.mimeapps.list" "$mimeapps_dir/mimeapps.list"
     else
@@ -110,14 +135,11 @@ save_mimeapps_config() {
 
 # Function to load dconf configuration
 load_dconf_config() {
-    # Ensure directory exists
     mkdir -p "$dconf_dir"
-
     log_message "Loading GNOME dconf configuration"
     log_message "XDG_CURRENT_DESKTOP: $XDG_CURRENT_DESKTOP"
 
-    # Load configuration for GNOME
-    if [ -f "$dconf_dir/settings.gnome" ]; then
+    if [[ -f "$dconf_dir/settings.gnome" ]]; then
         log_message "Found existing GNOME settings, loading..."
         log_message "Resetting dconf database"
         dconf reset -f /
@@ -133,11 +155,10 @@ load_dconf_config() {
     fi
 }
 
-# Function to start systemd sync services
 start_sync_services() {
     log_message "Starting sync services..."
 
-    # Start dconf sync service
+    # DConf sync service
     log_message "Starting dconf-sync-gnome.service"
     if systemctl --user enable dconf-sync-gnome.service 2>/dev/null; then
         log_message "dconf-sync service enabled"
@@ -148,7 +169,7 @@ start_sync_services() {
         log_message "WARNING: Failed to start dconf-sync service"
     fi
 
-    # Start mimeapps sync service
+    # MimeApps sync service
     log_message "Starting mimeapps-sync-gnome.service"
     if systemctl --user enable mimeapps-sync-gnome.service 2>/dev/null; then
         log_message "mimeapps-sync service enabled"
@@ -160,36 +181,33 @@ start_sync_services() {
     fi
 }
 
-# Main execution
 log_message "=========================================="
 log_message "Starting GNOME session configuration"
 log_message "=========================================="
 
-# Load configurations
 load_mimeapps_config
 load_dconf_config
-
-# Start monitoring services
 start_sync_services
 
 log_message "GNOME session configuration completed"
-# --- END Configuration dconf
 
 
-### Execute in LiveCD
-if [ -e /usr/bin/startbiglive ]; then
-    # Revert variables to Gnome
+#-------------------------------------------------------------------------------
+# LiveCD-Specific Configuration
+#-------------------------------------------------------------------------------
+if [[ -e /usr/bin/startbiglive ]]; then
+    # Set GNOME environment variables
     export DESKTOP_SESSION=gnome
     export XDG_SESSION_DESKTOP=gnome
     export XDG_CURRENT_DESKTOP=GNOME
     export GDMSESSION=gnome
-    
-    # Enables basic, unencrypted password storage in Chromium-based browsers
+
+    # Enable basic password storage in Chromium browsers (no encrypted keyring in live mode)
     sudo sed -i '/--password-store=basic/!s/\(exec \/usr\/lib\/brave-browser\/brave "$@" $USER_FLAGS\)$/\1 --password-store=basic/' /usr/bin/brave
 
-    # Removes unwanted files
+    # Clean up empty placeholder files
     rm -f "$HOME/Empty Bash" "$HOME/Empty Desktop File.desktop" "$HOME/Empty File"
 
-    # Updates user directories
+    # Create user directories for current locale
     LANG=$LANG xdg-user-dirs-update --force
 fi

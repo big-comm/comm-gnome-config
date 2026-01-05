@@ -1,24 +1,36 @@
 #!/bin/bash
-
-# dconf-sync-monitor-gnome - Monitor and sync dconf settings for GNOME
-# Part of comm-gnome-config package
+#===============================================================================
+# Script Name: dconf-sync-monitor-gnome
+# Description: dconf Settings Monitor for GNOME
+#              Monitors and syncs dconf database changes, enabling desktop
+#              environment switching while preserving user preferences.
+# Package:     comm-gnome-config
+#
+# Dependencies:
+#   - dconf (GNOME configuration system)
+#===============================================================================
 
 set -euo pipefail
 
 DESKTOP_ENV="gnome"
-DCONF_DIR="${HOME}/.config/dconf"
-SETTINGS_FILE="${DCONF_DIR}/settings.${DESKTOP_ENV}"
-LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
+DCONF_DIR="$HOME/.config/dconf"
+SETTINGS_FILE="$DCONF_DIR/settings.$DESKTOP_ENV"
+LOG_FILE="/tmp/dconf-sync-$DESKTOP_ENV.log"
 
 # Ensure directory exists
-mkdir -p "${DCONF_DIR}"
+mkdir -p "$DCONF_DIR"
 
-# Logging function
+#-------------------------------------------------------------------------------
+# Logging Function
+#-------------------------------------------------------------------------------
 log_message() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${DESKTOP_ENV}] $1" | tee -a "${LOG_FILE}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$DESKTOP_ENV] $1" | tee -a "$LOG_FILE"
 }
 
-# Debounce mechanism - avoid saving too frequently
+#-------------------------------------------------------------------------------
+# Settings Save with Debounce
+# Prevents excessive disk writes during rapid changes
+#-------------------------------------------------------------------------------
 LAST_SAVE=0
 DEBOUNCE_SECONDS=2
 
@@ -26,34 +38,36 @@ save_settings() {
     local current_time=$(date +%s)
     local time_diff=$((current_time - LAST_SAVE))
 
-    if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ]; then
+    if [[ $time_diff -lt $DEBOUNCE_SECONDS ]]; then
         return
     fi
 
-    log_message "Saving dconf settings to ${SETTINGS_FILE}"
+    log_message "Saving dconf settings to $SETTINGS_FILE"
 
     # Atomic write using temp file
-    if dconf dump / > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
-        mv "${SETTINGS_FILE}.tmp" "${SETTINGS_FILE}"
-        LAST_SAVE=${current_time}
+    if dconf dump / > "$SETTINGS_FILE.tmp" 2>/dev/null; then
+        mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+        LAST_SAVE=$current_time
         log_message "Settings saved successfully"
     else
         log_message "ERROR: Failed to dump dconf settings"
-        rm -f "${SETTINGS_FILE}.tmp"
+        rm -f "$SETTINGS_FILE.tmp"
     fi
 }
 
-# Main monitoring loop
-log_message "Starting dconf monitor for ${DESKTOP_ENV}"
-log_message "Settings file: ${SETTINGS_FILE}"
+#-------------------------------------------------------------------------------
+# Main Monitoring Loop
+#-------------------------------------------------------------------------------
+log_message "Starting dconf monitor for $DESKTOP_ENV"
+log_message "Settings file: $SETTINGS_FILE"
 
-# Initial save to ensure we have current state
+# Initial save to capture current state
 save_settings
 
-# Monitor dconf changes
+# Monitor dconf changes in real-time
 log_message "Monitoring dconf changes..."
 dconf watch / | while read -r change; do
-    log_message "Change detected: ${change}"
+    log_message "Change detected: $change"
     save_settings
 done
 
