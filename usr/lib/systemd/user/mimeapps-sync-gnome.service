@@ -3,6 +3,8 @@ Description=GNOME mimeapps (file associations) synchronization service
 Documentation=man:mimeapps(5)
 PartOf=graphical-session.target
 After=graphical-session.target
+# Don't run in GDM greeter sessions
+ConditionPathExists=!/run/gdm/home/gdm-greeter
 
 [Service]
 Type=simple

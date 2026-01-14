@@ -9,7 +9,7 @@ DESKTOP_ENV="gnome"
 MIMEAPPS_DIR="${HOME}/.config"
 MIMEAPPS_FILE="${MIMEAPPS_DIR}/mimeapps.list"
 MIMEAPPS_BACKUP="${MIMEAPPS_DIR}/${DESKTOP_ENV}.mimeapps.list"
-LOG_FILE="/tmp/mimeapps-sync-${DESKTOP_ENV}.log"
+LOG_FILE="/tmp/mimeapps-sync-${DESKTOP_ENV}-${UID}.log"
 
 # Logging function
 log_message() {

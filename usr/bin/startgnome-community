@@ -78,7 +78,7 @@ gsettings set org.gnome.desktop.media-handling automount true
 # Base directories for configurations
 dconf_dir="$HOME/.config/dconf"
 mimeapps_dir="$HOME/.config"
-log_file="/tmp/dconf-switch-gnome.log"
+log_file="/tmp/dconf-switch-gnome-${UID}.log"
 
 # Function to log messages
 log_message() {
