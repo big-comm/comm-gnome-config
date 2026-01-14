@@ -3,8 +3,6 @@ Description=GNOME dconf settings synchronization service
 Documentation=man:dconf(1)
 PartOf=graphical-session.target
 After=graphical-session.target
-# Don't run in GDM greeter sessions
-ConditionPathExists=!/run/gdm/home/gdm-greeter
 
 [Service]
 Type=simple
