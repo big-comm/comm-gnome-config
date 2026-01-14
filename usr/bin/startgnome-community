@@ -1,11 +1,5 @@
 #!/bin/sh
 
-# Don't run in GDM greeter session (login screen)
-# The greeter runs gnome-session but should not load user configurations
-case "$XDG_CURRENT_DESKTOP" in
-    *Greeter*|*greeter*) exit 0 ;;
-esac
-
 # Tests if the card is NVIDIA, if so, uses the value of the variables
 lspci | grep -qi "vga.*nvidia" && {
    export GSK_RENDERER=ngl
@@ -84,7 +78,7 @@ gsettings set org.gnome.desktop.media-handling automount true
 # Base directories for configurations
 dconf_dir="$HOME/.config/dconf"
 mimeapps_dir="$HOME/.config"
-log_file="/tmp/dconf-switch-gnome-${UID}.log"
+log_file="/tmp/dconf-switch-gnome.log"
 
 # Function to log messages
 log_message() {

@@ -8,7 +8,7 @@ set -euo pipefail
 DESKTOP_ENV="gnome"
 DCONF_DIR="${HOME}/.config/dconf"
 SETTINGS_FILE="${DCONF_DIR}/settings.${DESKTOP_ENV}"
-LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}-${UID}.log"
+LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
 
 # Logging function
 log_message() {
