@@ -1,6 +1,7 @@
 #!/bin/sh
 
-# Add startgnome-community in gnome-session
-if [ "$(grep startgnome-community /usr/bin/gnome-session)" = "" ]; then
-    sed -i '/gnome-session-binary/i . /usr/bin/startgnome-community' /usr/bin/gnome-session
-fi
+sed -i 's|Exec=.*|Exec=/usr/bin/startgnome-community|g' /usr/share/wayland-sessions/gnome.desktop 2> /dev/null
+sed -i 's|Exec=.*|Exec=/usr/bin/startgnome-community|g' /usr/share/wayland-sessions/gnome-wayland.desktop 2> /dev/null
+sed -i 's|Exec=.*|Exec=/usr/bin/startgnome-community|g' /usr/share/wayland-sessions/gnome-classic.desktop 2> /dev/null
+sed -i 's|Exec=.*|Exec=/usr/bin/startgnome-community|g' /usr/share/wayland-sessions/gnome-classic-wayland.desktop 2> /dev/null
+sed -i 's|#DefaultRestartSec=100ms|DefaultRestartSec=1000ms|g;s|#DefaultStartLimitBurst=5|DefaultStartLimitBurst=10|g' /etc/systemd/user.conf 2> /dev/null

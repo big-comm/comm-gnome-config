@@ -193,3 +193,9 @@ if [ -e /usr/bin/startbiglive ]; then
     # Updates user directories
     LANG=$LANG xdg-user-dirs-update --force
 fi
+
+
+#-------------------------------------------------------------------------------
+# Start Gnome Session
+#-------------------------------------------------------------------------------
+exec /usr/bin/gnome-session
