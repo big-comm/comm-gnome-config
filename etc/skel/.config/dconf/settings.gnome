@@ -183,7 +183,7 @@ last-panel='background'
 window-state=(980, 640, false)
 
 [org/gnome/desktop/app-folders]
-folder-children=['AudioVideo', 'BigApps', 'Development', 'Game', 'Network', 'Office', 'Settings', 'Utilities', 'Utility', 'WebApps']
+folder-children=['AudioVideo', 'Development', 'Game', 'Network', 'Office', 'Settings', 'Utilities', 'Utility', 'WebApps']
 
 [org/gnome/desktop/app-folders/folders/AudioVideo]
 apps=['org.gnome.Photos.desktop', 'org.gnome.eog.desktop', 'org.gnome.Loupe.desktop', 'io.github.celluloid_player.Celluloid.desktop', 'org.gnome.Music.desktop', 'org.gnome.Totem.desktop', 'org.gnome.Snapshot.desktop', 'org.pipewire.Helvum.desktop', 'org.gnome.Showtime.desktop', 'com.github.neithern.g4music.desktop']
@@ -221,21 +221,21 @@ name='Office.directory'
 translate=true
 
 [org/gnome/desktop/app-folders/folders/Settings]
-apps=['org.gnome.Settings.desktop', 'org.gnome.tweaks.desktop', 'gufw.desktop', 'org.manjaro.pamac.manager.desktop', 'org.gnome.SystemMonitor.desktop', 'gnome-system-monitor.desktop', 'fma-config-tool.desktop', 'timeshift-gtk.desktop', 'system-config-printer-only-jobs.desktop', 'hplip.desktop', 'hp-uiscan.desktop', 'cups.desktop', 'kvantummanager.desktop', 'pamac--updates.desktop', 'appimagelaunchersettings.desktop', 'ca.desrt.dconf-editor.desktop', 'org.gnome.Extensions.desktop', 'qefientrymanager.desktop', 'com.sidevesh.Luminance.desktop']
+apps=['org.gnome.tweaks.desktop', 'org.gnome.Settings.desktop', 'big-hardware-info.desktop', 'big-driver-manager.desktop', 'big-kernel-manager.desktop', 'org.manjaro.pamac.manager.desktop', 'timeshift-gtk.desktop', 'system-config-printer-only-jobs.desktop', 'hplip.desktop', 'hp-uiscan.desktop', 'cups.desktop', 'kvantummanager.desktop', 'ca.desrt.dconf-editor.desktop', 'org.gnome.Extensions.desktop', 'qefientrymanager.desktop', 'com.sidevesh.Luminance.desktop', 'pamac-updates.desktop', 'br.com.biglinux.grub-restore.desktop', 'system-config-printer.desktop']
 categories=['Settings']
 excluded-apps=['big-store.desktop', 'bigsettings.desktop']
 name='Settings.directory'
 translate=true
 
 [org/gnome/desktop/app-folders/folders/Utilities]
-apps=['org.gnome.clocks.desktop', 'org.gnome.Weather.desktop', 'org.gnome.Characters.desktop', 'org.gnome.font-viewer.desktop', 'org.gnome.FileRoller.desktop', 'org.gnome.baobab.desktop', 'net.nokyan.Resources.desktop', 'org.gnome.DiskUtility.desktop', 'gparted.desktop', 'org.kde.konsole.desktop', 'org.freedesktop.MalcontentControl.desktop', 'org.gnome.SimpleScan.desktop']
+apps=['org.gnome.clocks.desktop', 'org.gnome.Weather.desktop', 'bigtts.desktop', 'org.gnome.Characters.desktop', 'org.gnome.font-viewer.desktop', 'org.gnome.FileRoller.desktop', 'org.gnome.baobab.desktop', 'net.nokyan.Resources.desktop', 'org.gnome.DiskUtility.desktop', 'gparted.desktop', 'org.freedesktop.MalcontentControl.desktop', 'org.gnome.SimpleScan.desktop']
 categories=['X-GNOME-Utilities']
 excluded-apps=['org.gnome.Extensions.desktop', 'org.gnome.Evince.desktop', 'org.gnome.eog.desktop']
 name='X-GNOME-Utilities.directory'
 translate=true
 
 [org/gnome/desktop/app-folders/folders/WebApps]
-apps=['brave-webz.telegram.org__-Default.desktop', 'brave-web.whatsapp.com__-Default.desktop', 'brave-discord.com__-Default.desktop', 'brave-drive.google.com__-Default.desktop', 'brave-www.deezer.com__-Default.desktop', 'brave-open.spotify.com__browse_featured-Default.desktop', 'brave-calendar.google.com__-Default.desktop', 'brave-www.office.com__-Default.desktop', 'brave-forum.biglinux.com.br__-Default.desktop', 'brave-meet.jit.si__-Default.desktop', 'brave-snapdrop.net__-Default.desktop']
+apps=['br.com.biglinux.webapps.desktop', 'brave-webz.telegram.org__-Default.desktop', 'brave-web.whatsapp.com__-Default.desktop', 'brave-discord.com__-Default.desktop', 'brave-drive.google.com__-Default.desktop', 'brave-www.deezer.com__-Default.desktop', 'brave-open.spotify.com__browse_featured-Default.desktop', 'brave-calendar.google.com__-Default.desktop', 'brave-forum.biglinux.com.br__-Default.desktop', 'brave-meet.jit.si__-Default.desktop', 'brave-snapdrop.net__-Default.desktop']
 categories=['WebApps']
 name='WebApps'
 
@@ -275,7 +275,7 @@ toolkit-accessibility=false
 automount=true
 
 [org/gnome/desktop/notifications]
-application-children=['org-manjaro-pamac-manager', 'gnome-network-panel', 'org-gnome-settings', 'org-gnome-console', 'org-gnome-texteditor', 'pamac-installer', 'brave-browser', 'org-gnome-nautilus']
+application-children=['org-manjaro-pamac-manager', 'gnome-network-panel', 'org-gnome-settings', 'org-gnome-console', 'org-gnome-texteditor', 'pamac-installer', 'brave-browser', 'org-gnome-nautilus', 'gnome-about-panel']
 
 [org/gnome/desktop/notifications/application/brave-browser]
 application-id='brave-browser.desktop'
@@ -408,7 +408,7 @@ name='Ashy Terminal'
 sleep-inactive-ac-type='nothing'
 
 [org/gnome/shell]
-app-picker-layout=[{'BigApps': <{'position': <0>}>, 'AudioVideo': <{'position': <1>}>, 'Office': <{'position': <2>}>, 'Utilities': <{'position': <3>}>, 'Settings': <{'position': <4>}>, 'Network': <{'position': <5>}>, 'Game': <{'position': <6>}>, 'WebApps': <{'position': <7>}>, 'Development': <{'position': <8>}>, 'biglinux-grub-restore.desktop': <{'position': <9>}>, 'calamares-biglinux.desktop': <{'position': <10>}>}]
+app-picker-layout=[{'AudioVideo': <{'position': <0>}>, 'Office': <{'position': <1>}>, 'Utilities': <{'position': <2>}>, 'Settings': <{'position': <3>}>, 'Network': <{'position': <4>}>, 'Game': <{'position': <5>}>, 'WebApps': <{'position': <6>}>, 'Development': <{'position': <7>}>, 'com.biglinux.calamares-config.desktop': <{'position': <8>}>}]
 command-history=['ajustes', 'r']
 disabled-extensions=['ddterm@amezin.github.com', 'just-perfection-desktop@just-perfection', 'GPaste@gnome-shell-extensions.gnome.org']
 enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'CoverflowAltTab@dmo60.de', 'dash-to-dock@micxgx.gmail.com', 'gsconnect@andyholmes.github.io', 'pamac-updates@manjaro.org', 'blur-my-shell@aunetx', 'legacyschemeautoswitcher@joshimukul29.gmail.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'pano@elhan.io']
@@ -462,6 +462,11 @@ pipeline='pipeline_default'
 [org/gnome/shell/extensions/blur-my-shell/window-list]
 brightness=0.59999999999999998
 sigma=30
+
+[org/gnome/shell/extensions/copyous]
+history-length=70
+open-clipboard-dialog-shortcut=['<Super>v']
+paste-on-copy=false
 
 [org/gnome/shell/extensions/dash-to-dock]
 animation-time=0.49999999999999994
