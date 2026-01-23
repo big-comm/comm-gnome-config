@@ -73,21 +73,19 @@ currentTheme=$(dconf read $dconfPath)
 # Enable automatic mounting of devices
 gsettings set org.gnome.desktop.media-handling automount true
 
-#-------------------------------------------------------------------------------
 # Configure JamesDSP audio enhancement (First Boot Only)
 # Only enables if user activated JamesDSP in live mode during installation
 #-------------------------------------------------------------------------------
 if [[ -e "$HOME/.first-boot" ]]; then
-    # Check if user enabled JamesDSP during live session (Calamares creates this file)
-    if [[ -e /etc/big-default-config/jamesdsp && -e "$HOME/.config/jamesdsp/application.conf" ]]; then
-        sed -i "s|AutoStartEnabled=false|AutoStartEnabled=true|g" "$HOME/.config/jamesdsp/application.conf"
-        logger "JamesDSP autostart enabled on first boot (user activated during installation)"
+    # Check if user did NOT enable JamesDSP during live session
+    if [[ ! -e /etc/big-default-config/jamesdsp && -e "$HOME/.config/jamesdsp/application.conf" ]]; then
+        sed -i "s|AutoStartEnabled=true|AutoStartEnabled=false|g" "$HOME/.config/jamesdsp/application.conf"
+        logger "JamesDSP autostart disabled on first boot (user did not activate during installation)"
     fi
     # Remove first boot marker
     rm -f "$HOME/.first-boot"
     logger "First boot configuration completed"
 fi
-
 # NOTE: JamesDSP live mode configuration is handled by biglinux-livecd
 
 
