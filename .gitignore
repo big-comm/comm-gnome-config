@@ -1,5 +1,6 @@
 # CLAUDE.md - Documentation for Claude Code
 CLAUDE.md
+.claude
 
 # Pacman/makepkg build artifacts
 *.pkg.tar.zst
