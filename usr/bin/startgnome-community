@@ -1,12 +1,5 @@
 #!/bin/sh
 
-# Tests if the card is NVIDIA, if so, uses the value of the variables
-lspci | grep -qi "vga.*nvidia" && {
-   export GSK_RENDERER=ngl
-   export GDK_DISABLE=vulkan
-   export GDK_GL_DISABLE=buffer-storage
-}
-
 # Defining the default visual style to be used in applications that use Qt
 [[ -z $QT_STYLE_OVERRIDE ]] && export QT_STYLE_OVERRIDE="kvantum"
 [[ -z $QT_QPA_PLATFORMTHEME ]] && export QT_QPA_PLATFORMTHEME="xdg-desktop-portal"
