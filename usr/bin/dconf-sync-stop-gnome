@@ -15,7 +15,21 @@ log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${DESKTOP_ENV}] $1" | tee -a "${LOG_FILE}"
 }
 
-log_message "Stopping dconf sync - performing final save"
+log_message "Stopping dconf sync service"
+
+# Check if dconf is still responsive and has valid settings
+# During session shutdown, dconf may already be reset to defaults
+current_icon_theme=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null || echo "")
+
+# If icon-theme is empty, 'default', or 'HighContrast', the session is likely shutting down
+# and dconf has been reset - don't overwrite the saved file with empty/default values
+if [[ -z "$current_icon_theme" || "$current_icon_theme" == "'default'" || "$current_icon_theme" == "'HighContrast'" ]]; then
+    log_message "Skipping final save - dconf appears to be reset (icon-theme: ${current_icon_theme:-empty})"
+    log_message "Keeping previously saved settings intact"
+    exit 0
+fi
+
+log_message "Performing final save (icon-theme: $current_icon_theme)"
 
 # Ensure directory exists
 mkdir -p "${DCONF_DIR}"

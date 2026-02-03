@@ -18,6 +18,16 @@ log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${DESKTOP_ENV}] $1" | tee -a "${LOG_FILE}"
 }
 
+# Check if dconf has valid settings (not reset to defaults)
+is_dconf_valid() {
+    local icon_theme=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null || echo "")
+    # If icon-theme is empty, 'default', or 'HighContrast', dconf may be in a reset state
+    if [[ -z "$icon_theme" || "$icon_theme" == "'default'" || "$icon_theme" == "'HighContrast'" ]]; then
+        return 1
+    fi
+    return 0
+}
+
 # Debounce mechanism - avoid saving too frequently
 LAST_SAVE=0
 DEBOUNCE_SECONDS=2
@@ -27,6 +37,13 @@ save_settings() {
     local time_diff=$((current_time - LAST_SAVE))
 
     if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ]; then
+        return
+    fi
+
+    # Verify dconf has valid settings before saving
+    if ! is_dconf_valid; then
+        local current_icon=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null || echo "empty")
+        log_message "Skipping save - dconf appears reset (icon-theme: $current_icon)"
         return
     fi
 
@@ -47,8 +64,17 @@ save_settings() {
 log_message "Starting dconf monitor for ${DESKTOP_ENV}"
 log_message "Settings file: ${SETTINGS_FILE}"
 
-# Initial save to ensure we have current state
-save_settings
+# Wait a moment for GNOME Shell to fully initialize before any saves
+sleep 3
+
+# Check initial state
+if is_dconf_valid; then
+    log_message "Initial dconf state is valid, saving..."
+    save_settings
+else
+    current_icon=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null || echo "empty")
+    log_message "Initial dconf state appears reset (icon-theme: $current_icon), skipping initial save"
+fi
 
 # Monitor dconf changes
 log_message "Monitoring dconf changes..."

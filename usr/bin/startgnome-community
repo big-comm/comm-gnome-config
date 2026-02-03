@@ -129,6 +129,12 @@ load_dconf_config() {
     # Load configuration for GNOME
     if [ -f "$dconf_dir/settings.gnome" ]; then
         log_message "Found existing GNOME settings, loading..."
+
+        # Stop the theme sync path watcher to prevent it from triggering during dconf load
+        # This avoids race conditions where the sync script runs before settings are fully loaded
+        log_message "Stopping sync-gnome-theme-to-qt.path temporarily..."
+        systemctl --user stop sync-gnome-theme-to-qt.path 2>/dev/null
+
         log_message "Resetting dconf database"
         dconf reset -f /
 
@@ -137,6 +143,17 @@ load_dconf_config() {
             log_message "GNOME settings loaded successfully"
         else
             log_message "ERROR: Failed to load GNOME settings"
+        fi
+
+        # Restart the theme sync path watcher now that settings are loaded
+        log_message "Restarting sync-gnome-theme-to-qt.path..."
+        systemctl --user start sync-gnome-theme-to-qt.path 2>/dev/null
+
+        # Run the sync script once with the correct settings now loaded
+        log_message "Running theme sync with loaded settings..."
+        if [ -f "/usr/share/sync-kde-and-gtk-places/sync-gnome-theme-to-qt.sh" ]; then
+            /usr/share/sync-kde-and-gtk-places/sync-gnome-theme-to-qt.sh 2>/dev/null
+            log_message "Theme sync completed"
         fi
     else
         log_message "No existing GNOME settings found - will create on first save"
