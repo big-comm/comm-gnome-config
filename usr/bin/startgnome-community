@@ -147,7 +147,17 @@ load_dconf_config() {
     log_message "XDG_CURRENT_DESKTOP: $XDG_CURRENT_DESKTOP"
 
     # Load configuration for GNOME
-    if [ -f "$dconf_dir/settings.gnome" ]; then
+    local settings_file="$dconf_dir/settings.gnome"
+    local backup_file="$dconf_dir/settings.gnome.bak"
+
+    # Restore from backup if settings file is empty or missing (forced shutdown protection)
+    if [[ -f "$settings_file" && ! -s "$settings_file" && -s "$backup_file" ]]; then
+        log_message "WARNING: settings.gnome is empty, restoring from backup"
+        cp -f "$backup_file" "$settings_file"
+        log_message "Backup restored successfully"
+    fi
+
+    if [[ -s "$settings_file" ]]; then
         log_message "Found existing GNOME settings, loading..."
 
         # Stop the theme sync path watcher to prevent it from triggering during dconf load
@@ -158,11 +168,19 @@ load_dconf_config() {
         log_message "Resetting dconf database"
         dconf reset -f /
 
-        log_message "Loading settings from: $dconf_dir/settings.gnome"
-        if dconf load / < "$dconf_dir/settings.gnome"; then
+        log_message "Loading settings from: $settings_file"
+        if dconf load / < "$settings_file"; then
             log_message "GNOME settings loaded successfully"
         else
             log_message "ERROR: Failed to load GNOME settings"
+            # Try backup if main file failed to load
+            if [[ -s "$backup_file" ]]; then
+                log_message "Attempting to load from backup..."
+                if dconf load / < "$backup_file"; then
+                    log_message "Backup settings loaded successfully"
+                    cp -f "$backup_file" "$settings_file"
+                fi
+            fi
         fi
 
         # Restart the theme sync path watcher now that settings are loaded
