@@ -82,13 +82,21 @@ if [[ -e "$themeFile" && ! -e "$HOME/.big_desktop_theme" ]]; then
     fi
 
     # JamesDSP configuration
-    jamesdsp_conf="$HOME/.config/jamesdsp/application.conf"
-    if [[ -e "$jamesdsp_conf" ]]; then
+    if command -v jamesdsp &>/dev/null; then
+        jamesdsp_conf="$HOME/.config/jamesdsp/application.conf"
         if [[ -e /etc/big-default-config/jamesdsp ]]; then
-            sed -i "s|AutoStartEnabled=false|AutoStartEnabled=true|g" "$jamesdsp_conf"
+            # Enable JamesDSP
+            if [[ -e "$jamesdsp_conf" ]]; then
+                sed -i "s|AutoStartEnabled=false|AutoStartEnabled=true|g" "$jamesdsp_conf"
+            fi
+            systemctl --user enable --now jamesdsp-autostart.service 2>/dev/null
             logger "JamesDSP autostart enabled on first boot"
         else
-            sed -i "s|AutoStartEnabled=true|AutoStartEnabled=false|g" "$jamesdsp_conf"
+            # Disable JamesDSP
+            if [[ -e "$jamesdsp_conf" ]]; then
+                sed -i "s|AutoStartEnabled=true|AutoStartEnabled=false|g" "$jamesdsp_conf"
+            fi
+            systemctl --user disable --now jamesdsp-autostart.service 2>/dev/null
             logger "JamesDSP autostart disabled on first boot"
         fi
     fi
