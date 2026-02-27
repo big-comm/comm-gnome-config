@@ -186,7 +186,7 @@ window-state=(980, 640, false)
 folder-children=['AudioVideo', 'Development', 'Game', 'Network', 'Office', 'Settings', 'Utilities', 'Utility', 'WebApps']
 
 [org/gnome/desktop/app-folders/folders/AudioVideo]
-apps=['org.gnome.Loupe.desktop', 'io.github.celluloid_player.Celluloid.desktop', 'br.com.biglinux.audio.converter.desktop', 'br.com.biglinux.converter.desktop', 'com.github.neithern.g4music.desktop', 'br.com.biglinux.microphone.desktop', 'me.timschneeberger.jdsp4linux.desktop', 'mpv.desktop', 'org.gnome.NetworkDisplays.desktop', 'org.ffado.FfadoMixer.desktop']
+apps=['org.gnome.Photos.desktop', 'org.gnome.eog.desktop', 'org.gnome.Loupe.desktop', 'io.github.celluloid_player.Celluloid.desktop', 'org.gnome.Music.desktop', 'org.gnome.Totem.desktop', 'org.gnome.Snapshot.desktop', 'org.pipewire.Helvum.desktop', 'org.gnome.Showtime.desktop', 'com.github.neithern.g4music.desktop']
 categories=['AudioVideo']
 excluded-apps=['biglinux-noise-reduction-pipewire.desktop']
 name='AudioVideo.directory'
@@ -210,7 +210,7 @@ name='Network.directory'
 translate=true
 
 [org/gnome/desktop/app-folders/folders/Office]
-apps=['libreoffice-writer.desktop', 'libreoffice-calc.desktop', 'libreoffice-impress.desktop', 'libreoffice-base.desktop', 'libreoffice-draw.desktop', 'org.gnome.gitlab.somas.Apostrophe.desktop', 'org.gnome.Papers.desktop', 'br.com.biglinux.bigocrpdf.desktop', 'br.com.biglinux.bigocrimage.desktop', 'org.gnome.Contacts.desktop']
+apps=['libreoffice-writer.desktop', 'libreoffice-calc.desktop', 'libreoffice-impress.desktop', 'libreoffice-base.desktop', 'libreoffice-draw.desktop', 'br.com.biglinux.bigocrimage.desktop', 'org.gnome.gitlab.somas.Apostrophe.desktop', 'org.gnome.Papers.desktop', 'br.com.biglinux.bigocrpdf.desktop', 'org.gnome.Contacts.desktop']
 categories=['Office']
 name='Office.directory'
 translate=true
