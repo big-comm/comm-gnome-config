@@ -152,35 +152,34 @@ def main():
         
         # Convert or copy wallpaper
         if wallpaper_file.lower().endswith('.avif'):
-            run_command(f"convert \"{wallpaper_file}\" fundo.jpg", shell=True)
+            run_command(f'magick "{wallpaper_file}" fundo.jpg', shell=True)
         else:
             shutil.copy(wallpaper_file, "fundo.jpg")
-        
-        # Create resource XML
-        xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+
+        # Apply Gaussian blur to wallpaper for frosted glass effect on GDM
+        blur_result = run_command("magick fundo.jpg -blur 0x15 fundo.jpg", shell=True)
+        if blur_result is None:
+            logging.warning(
+                "BigCommunity: Failed to apply blur to wallpaper, using original"
+            )
+        else:
+            logging.info("BigCommunity: Blur applied to GDM wallpaper")
+
+        # Create resource XML dynamically from extracted files
+        extracted_files = [
+            f
+            for f in os.listdir(temp_dir)
+            if f != "gnome-shell-theme.gresource"
+            and f != "gnome-shell-theme.gresource.xml"
+            and os.path.isfile(os.path.join(temp_dir, f))
+        ]
+        extracted_files.sort()
+
+        file_entries = "\n    ".join(f"<file>{f}</file>" for f in extracted_files)
+        xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/org/gnome/shell/theme">
-    <file>fundo.jpg</file>
-    <file>calendar-today-light.svg</file>
-    <file>calendar-today.svg</file>
-    <file>checkbox-focused.svg</file>
-    <file>checkbox-off-focused-light.svg</file>
-    <file>checkbox-off-focused.svg</file>
-    <file>checkbox-off-light.svg</file>
-    <file>checkbox-off.svg</file>
-    <file>checkbox.svg</file>
-    <file>gnome-shell-dark.css</file>
-    <file>gnome-shell-high-contrast.css</file>
-    <file>gnome-shell-light.css</file>
-    <file>gnome-shell-start.svg</file>
-    <file>pad-osd.css</file>
-    <file>process-working-dark.svg</file>
-    <file>process-working-light.svg</file>
-    <file>toggle-off-light.svg</file>
-    <file>toggle-off.svg</file>
-    <file>toggle-on-light.svg</file>
-    <file>toggle-on.svg</file>
-    <file>workspace-placeholder.svg</file>
+    {file_entries}
   </gresource>
 </gresources>"""
         

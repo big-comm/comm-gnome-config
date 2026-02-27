@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+# BigCommunity - Set default user avatar for GDM login screen
+# Sets gdm-logo.png as default avatar for all users who don't have a custom one.
+# When a user changes their avatar in GNOME Settings, their choice takes priority.
+
+DEFAULT_ICON="/etc/gdm-logo.png"
+ACCOUNTS_DIR="/var/lib/AccountsService/users"
+
+# Exit if default icon doesn't exist
+[[ -f "$DEFAULT_ICON" ]] || exit 0
+
+# Ensure AccountsService directory exists
+mkdir -p "$ACCOUNTS_DIR"
+
+# Process all human users (UID >= 1000, excluding nobody)
+while IFS=: read -r username _ uid _ _ _ _; do
+    [[ "$uid" -ge 1000 && "$uid" -lt 65534 ]] || continue
+
+    user_file="$ACCOUNTS_DIR/$username"
+
+    if [[ -f "$user_file" ]]; then
+        # Check current icon setting
+        current_icon=$(grep "^Icon=" "$user_file" 2>/dev/null | head -1 | cut -d= -f2)
+
+        # Skip if user has a custom icon (not our default)
+        [[ -n "$current_icon" && "$current_icon" != "$DEFAULT_ICON" ]] && continue
+
+        if grep -q "^Icon=" "$user_file" 2>/dev/null; then
+            # Icon line exists but is our default or empty - update it
+            sed -i "s|^Icon=.*|Icon=$DEFAULT_ICON|" "$user_file"
+        elif grep -q "^\[User\]" "$user_file" 2>/dev/null; then
+            # [User] section exists but no Icon line - add it
+            sed -i "/^\[User\]/a Icon=$DEFAULT_ICON" "$user_file"
+        else
+            # File exists but no [User] section - add both
+            printf '\n[User]\nIcon=%s\n' "$DEFAULT_ICON" >> "$user_file"
+        fi
+    else
+        # No AccountsService file - create it
+        printf '[User]\nIcon=%s\n' "$DEFAULT_ICON" > "$user_file"
+        chmod 600 "$user_file"
+    fi
+done < /etc/passwd

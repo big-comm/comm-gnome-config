@@ -186,7 +186,7 @@ window-state=(980, 640, false)
 folder-children=['AudioVideo', 'Development', 'Game', 'Network', 'Office', 'Settings', 'Utilities', 'Utility', 'WebApps']
 
 [org/gnome/desktop/app-folders/folders/AudioVideo]
-apps=['org.gnome.Photos.desktop', 'org.gnome.eog.desktop', 'org.gnome.Loupe.desktop', 'io.github.celluloid_player.Celluloid.desktop', 'org.gnome.Music.desktop', 'org.gnome.Totem.desktop', 'org.gnome.Snapshot.desktop', 'org.pipewire.Helvum.desktop', 'org.gnome.Showtime.desktop', 'com.github.neithern.g4music.desktop']
+apps=['org.gnome.Loupe.desktop', 'io.github.celluloid_player.Celluloid.desktop', 'br.com.biglinux.audio.converter.desktop', 'br.com.biglinux.converter.desktop', 'com.github.neithern.g4music.desktop', 'br.com.biglinux.microphone.desktop', 'me.timschneeberger.jdsp4linux.desktop', 'mpv.desktop', 'org.gnome.NetworkDisplays.desktop', 'org.ffado.FfadoMixer.desktop']
 categories=['AudioVideo']
 excluded-apps=['biglinux-noise-reduction-pipewire.desktop']
 name='AudioVideo.directory'
@@ -210,7 +210,7 @@ name='Network.directory'
 translate=true
 
 [org/gnome/desktop/app-folders/folders/Office]
-apps=['libreoffice-writer.desktop', 'libreoffice-calc.desktop', 'libreoffice-impress.desktop', 'libreoffice-base.desktop', 'libreoffice-draw.desktop']
+apps=['libreoffice-writer.desktop', 'libreoffice-calc.desktop', 'libreoffice-impress.desktop', 'libreoffice-base.desktop', 'libreoffice-draw.desktop', 'org.gnome.gitlab.somas.Apostrophe.desktop', 'org.gnome.Papers.desktop', 'br.com.biglinux.bigocrpdf.desktop', 'br.com.biglinux.bigocrimage.desktop', 'org.gnome.Contacts.desktop']
 categories=['Office']
 name='Office.directory'
 translate=true
@@ -403,7 +403,7 @@ name='Ashy Terminal'
 sleep-inactive-ac-type='nothing'
 
 [org/gnome/shell]
-app-picker-layout=[{'AudioVideo': <{'position': <0>}>, 'Office': <{'position': <1>}>, 'Utilities': <{'position': <2>}>, 'Settings': <{'position': <3>}>, 'Network': <{'position': <4>}>, 'Game': <{'position': <5>}>, 'WebApps': <{'position': <6>}>, 'Development': <{'position': <7>}>, 'com.biglinux.calamares-config.desktop': <{'position': <8>}>}]
+app-picker-layout=[{'AudioVideo': <{'position': <0>}>, 'Office': <{'position': <1>}>, 'Utilities': <{'position': <2>}>, 'Settings': <{'position': <3>}>, 'Network': <{'position': <4>}>, 'Game': <{'position': <5>}>, 'WebApps': <{'position': <6>}>, 'com.biglinux.calamares-config.desktop': <{'position': <7>}>}]
 command-history=['ajustes', 'r']
 disabled-extensions=['ddterm@amezin.github.com', 'just-perfection-desktop@just-perfection', 'GPaste@gnome-shell-extensions.gnome.org', 'light-style@gnome-shell-extensions.gcampax.github.com']
 enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'CoverflowAltTab@dmo60.de', 'dash-to-dock@micxgx.gmail.com', 'gsconnect@andyholmes.github.io', 'pamac-updates@manjaro.org', 'blur-my-shell@aunetx', 'legacyschemeautoswitcher@joshimukul29.gmail.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'copyous@boerdereinar.dev']
