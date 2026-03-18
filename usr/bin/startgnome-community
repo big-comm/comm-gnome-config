@@ -66,20 +66,40 @@ currentTheme=$(dconf read $dconfPath)
 # Enable automatic mounting of devices
 gsettings set org.gnome.desktop.media-handling automount true
 
-# Configure JamesDSP audio enhancement (First Boot Only)
-# Only enables if user activated JamesDSP in live mode during installation
+# Configure first boot settings (theme, JamesDSP)
+# Applies user's choices from live session to the installed system
 #-------------------------------------------------------------------------------
-if [[ -e "$HOME/.first-boot" ]]; then
-    # Check if user did NOT enable JamesDSP during live session
-    if [[ ! -e /etc/big-default-config/jamesdsp && -e "$HOME/.config/jamesdsp/application.conf" ]]; then
-        sed -i "s|AutoStartEnabled=true|AutoStartEnabled=false|g" "$HOME/.config/jamesdsp/application.conf"
-        logger "JamesDSP autostart disabled on first boot (user did not activate during installation)"
+themeFile="/etc/big-default-config/theme"
+if [[ -e "$themeFile" && ! -e "$HOME/.big_desktop_theme" ]]; then
+    settings_file="$HOME/.config/dconf/settings.gnome"
+    theme="$(<"$themeFile")"
+
+    # Apply light theme if selected (skel defaults to dark)
+    if [[ "$theme" == "light" && -e "$settings_file" ]]; then
+        logger "Applying light theme on first boot"
+        sed -i "s|color-scheme='prefer-dark'|color-scheme='default'|g" "$settings_file"
+        sed -i "s|gtk-theme='adw-gtk3-dark'|gtk-theme='adw-gtk3'|g" "$settings_file"
     fi
-    # Remove first boot marker
+
+    # JamesDSP configuration
+    jamesdsp_conf="$HOME/.config/jamesdsp/application.conf"
+    if [[ -e "$jamesdsp_conf" ]]; then
+        if [[ -e /etc/big-default-config/jamesdsp ]]; then
+            sed -i "s|AutoStartEnabled=false|AutoStartEnabled=true|g" "$jamesdsp_conf"
+            logger "JamesDSP autostart enabled on first boot"
+        else
+            sed -i "s|AutoStartEnabled=true|AutoStartEnabled=false|g" "$jamesdsp_conf"
+            logger "JamesDSP autostart disabled on first boot"
+        fi
+    fi
+
+    touch "$HOME/.big_desktop_theme"
+fi
+
+if [[ -e "$HOME/.first-boot" ]]; then
     rm -f "$HOME/.first-boot"
     logger "First boot configuration completed"
 fi
-# NOTE: JamesDSP live mode configuration is handled by biglinux-livecd
 
 
 #-------------------------------------------------------------------------------
@@ -127,7 +147,17 @@ load_dconf_config() {
     log_message "XDG_CURRENT_DESKTOP: $XDG_CURRENT_DESKTOP"
 
     # Load configuration for GNOME
-    if [ -f "$dconf_dir/settings.gnome" ]; then
+    local settings_file="$dconf_dir/settings.gnome"
+    local backup_file="$dconf_dir/settings.gnome.bak"
+
+    # Restore from backup if settings file is empty or missing (forced shutdown protection)
+    if [[ -f "$settings_file" && ! -s "$settings_file" && -s "$backup_file" ]]; then
+        log_message "WARNING: settings.gnome is empty, restoring from backup"
+        cp -f "$backup_file" "$settings_file"
+        log_message "Backup restored successfully"
+    fi
+
+    if [[ -s "$settings_file" ]]; then
         log_message "Found existing GNOME settings, loading..."
 
         # Stop the theme sync path watcher to prevent it from triggering during dconf load
@@ -138,11 +168,19 @@ load_dconf_config() {
         log_message "Resetting dconf database"
         dconf reset -f /
 
-        log_message "Loading settings from: $dconf_dir/settings.gnome"
-        if dconf load / < "$dconf_dir/settings.gnome"; then
+        log_message "Loading settings from: $settings_file"
+        if dconf load / < "$settings_file"; then
             log_message "GNOME settings loaded successfully"
         else
             log_message "ERROR: Failed to load GNOME settings"
+            # Try backup if main file failed to load
+            if [[ -s "$backup_file" ]]; then
+                log_message "Attempting to load from backup..."
+                if dconf load / < "$backup_file"; then
+                    log_message "Backup settings loaded successfully"
+                    cp -f "$backup_file" "$settings_file"
+                fi
+            fi
         fi
 
         # Restart the theme sync path watcher now that settings are loaded

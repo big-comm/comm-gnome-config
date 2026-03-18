@@ -51,7 +51,18 @@ save_settings() {
 
     # Atomic write using temp file
     if dconf dump / > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
+        # Validate that dump is not empty (protection against forced shutdown corruption)
+        if [[ ! -s "${SETTINGS_FILE}.tmp" ]]; then
+            log_message "WARNING: dconf dump produced empty output, skipping save"
+            rm -f "${SETTINGS_FILE}.tmp"
+            return
+        fi
+        # Keep backup of current good settings before overwriting
+        if [[ -s "${SETTINGS_FILE}" ]]; then
+            cp -f "${SETTINGS_FILE}" "${SETTINGS_FILE}.bak"
+        fi
         mv "${SETTINGS_FILE}.tmp" "${SETTINGS_FILE}"
+        sync "${SETTINGS_FILE}"
         LAST_SAVE=${current_time}
         log_message "Settings saved successfully"
     else

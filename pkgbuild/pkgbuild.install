@@ -115,6 +115,11 @@ post_install() {
 
     manage_wallpaper_service "enable"
 
+    # Set default avatar for all users and enable boot-time service
+    printMsg "Setting default user avatar for GDM..."
+    /usr/bin/comm-set-default-avatar 2>/dev/null
+    systemctl enable comm-set-default-avatar.service >/dev/null 2>&1
+
     if [ $theme_result -eq 0 ]; then
         printMsg "BigCommunity GNOME ready - wallpaper sync active!"
     else
@@ -143,6 +148,11 @@ post_upgrade() {
 
     manage_wallpaper_service "restart"
 
+    # Update default avatar for any new users
+    printMsg "Updating default user avatar for GDM..."
+    /usr/bin/comm-set-default-avatar 2>/dev/null
+    systemctl enable comm-set-default-avatar.service >/dev/null 2>&1
+
     if [ $theme_result -eq 0 ]; then
         printMsg "BigCommunity GNOME upgraded - wallpaper sync active!"
     else
@@ -156,6 +166,10 @@ pre_remove() {
     printMsg "This may affect system appearance and functionality"
 
     manage_wallpaper_service "stop"
+
+    # Stop and disable avatar service
+    systemctl stop comm-set-default-avatar.service >/dev/null 2>&1
+    systemctl disable comm-set-default-avatar.service >/dev/null 2>&1
 
     # Restore original gnome-session binary (if wrapper was created)
     if [ -f "/usr/share/libalpm/scripts/startgnome-community-cleanup" ]; then

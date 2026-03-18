@@ -37,7 +37,19 @@ mkdir -p "${DCONF_DIR}"
 # Final save with retry logic
 for attempt in {1..3}; do
     if dconf dump / > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
+        # Validate that dump is not empty
+        if [[ ! -s "${SETTINGS_FILE}.tmp" ]]; then
+            log_message "WARNING: dconf dump produced empty output (attempt ${attempt}/3)"
+            rm -f "${SETTINGS_FILE}.tmp"
+            sleep 0.5
+            continue
+        fi
+        # Keep backup before overwriting
+        if [[ -s "${SETTINGS_FILE}" ]]; then
+            cp -f "${SETTINGS_FILE}" "${SETTINGS_FILE}.bak"
+        fi
         mv "${SETTINGS_FILE}.tmp" "${SETTINGS_FILE}"
+        sync "${SETTINGS_FILE}"
         log_message "Final settings saved successfully (attempt ${attempt})"
         exit 0
     else

@@ -1,0 +1,11 @@
+[Unit]
+Description=Set default user avatar for GDM (BigCommunity)
+Before=gdm.service display-manager.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/comm-set-default-avatar
+
+[Install]
+WantedBy=multi-user.target
