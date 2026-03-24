@@ -241,7 +241,7 @@ translate=true
 
 [org/gnome/desktop/background]
 color-shading-type='solid'
-picture-options='stretched'
+picture-options='zoom'
 picture-uri='file:///usr/share/wallpapers/default-light.avif'
 picture-uri-dark='file:///usr/share/wallpapers/default-dark.avif'
 primary-color='#ffffff'
