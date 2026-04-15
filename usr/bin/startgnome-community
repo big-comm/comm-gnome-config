@@ -27,8 +27,6 @@ fi
 # If using mesa amber force cairo renderer
 if compgen -G /var/lib/pacman/local/mesa-amber-* || systemd-detect-virt -q; then
     [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="cairo"
-else
-    [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="ngl"
 fi
 
 # Force language
