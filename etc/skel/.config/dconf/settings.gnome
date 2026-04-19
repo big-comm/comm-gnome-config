@@ -231,7 +231,7 @@ translate=true
 
 [org/gnome/desktop/app-folders/folders/WebApps]
 apps=['br.com.biglinux.webapps.desktop', 'brave-webz.telegram.org__-Default.desktop', 'brave-web.whatsapp.com__-Default.desktop', 'brave-discord.com__-Default.desktop', 'brave-drive.google.com__-Default.desktop', 'brave-www.deezer.com__-Default.desktop', 'brave-open.spotify.com__browse_featured-Default.desktop', 'brave-calendar.google.com__-Default.desktop', 'brave-forum.biglinux.com.br__-Default.desktop', 'brave-meet.jit.si__-Default.desktop', 'brave-snapdrop.net__-Default.desktop']
-categories=['WebApps']
+categories=['Webapps']
 name='WebApps'
 
 [org/gnome/desktop/app-folders/folders/YaST]
