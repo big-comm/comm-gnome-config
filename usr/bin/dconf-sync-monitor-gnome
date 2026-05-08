@@ -10,6 +10,19 @@ DCONF_DIR="${HOME}/.config/dconf"
 SETTINGS_FILE="${DCONF_DIR}/settings.${DESKTOP_ENV}"
 LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
 
+# External tools (e.g. layout-switcher) create this lock to coordinate
+# atomic writes to settings.gnome. While present, the watcher must not
+# dump the live dconf — its output would clobber the clean settings.gnome
+# the external tool is in the process of writing.
+LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/dconf-sync-${DESKTOP_ENV}.lock"
+
+# After settings.gnome is written by an external tool, the file's mtime is
+# fresh. The watcher's post-restart initial dump would overwrite it with
+# the live dconf state (which still carries leftover keys from the previous
+# layout). If the file is newer than this many seconds, skip the initial
+# save; the next user-driven dconf change will trigger a normal save anyway.
+FRESH_FILE_SECONDS=10
+
 # Ensure directory exists
 mkdir -p "${DCONF_DIR}"
 
@@ -37,6 +50,12 @@ save_settings() {
     local time_diff=$((current_time - LAST_SAVE))
 
     if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ]; then
+        return
+    fi
+
+    # External tool is mid-apply; do not clobber its in-flight write.
+    if [ -e "${LOCK_FILE}" ]; then
+        log_message "Skipping save - lock file present (${LOCK_FILE})"
         return
     fi
 
@@ -79,7 +98,13 @@ log_message "Settings file: ${SETTINGS_FILE}"
 sleep 3
 
 # Check initial state
-if is_dconf_valid; then
+if [ -e "${LOCK_FILE}" ]; then
+    log_message "Initial save skipped - lock file present (external apply in progress)"
+elif [ -s "${SETTINGS_FILE}" ] && \
+     [ $(($(date +%s) - $(stat -c %Y "${SETTINGS_FILE}" 2>/dev/null || echo 0))) -lt "${FRESH_FILE_SECONDS}" ]; then
+    file_age=$(($(date +%s) - $(stat -c %Y "${SETTINGS_FILE}")))
+    log_message "Initial save skipped - settings.gnome is fresh (${file_age}s old)"
+elif is_dconf_valid; then
     log_message "Initial dconf state is valid, saving..."
     save_settings
 else
