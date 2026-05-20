@@ -9,6 +9,7 @@ DESKTOP_ENV="gnome"
 DCONF_DIR="${HOME}/.config/dconf"
 SETTINGS_FILE="${DCONF_DIR}/settings.${DESKTOP_ENV}"
 LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
+LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/dconf-sync-${DESKTOP_ENV}.lock"
 
 # Logging function
 log_message() {
@@ -16,6 +17,13 @@ log_message() {
 }
 
 log_message "Stopping dconf sync service"
+
+# External tool (e.g. layout-switcher) is mid-apply: skip the final save so
+# we don't clobber the clean settings.gnome it is about to write.
+if [ -e "${LOCK_FILE}" ]; then
+    log_message "Skipping final save - lock file present (${LOCK_FILE})"
+    exit 0
+fi
 
 # Check if dconf is still responsive and has valid settings
 # During session shutdown, dconf may already be reset to defaults
