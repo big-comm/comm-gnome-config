@@ -12,6 +12,8 @@ import subprocess
 import shutil
 import tempfile
 import logging
+import pwd
+import shlex
 
 # Configure logging
 logging.basicConfig(
@@ -41,19 +43,98 @@ def run_command(cmd, shell=False):
 def is_gdm_settings_installed():
     """Check if gdm-settings is installed"""
     try:
-        # Check if gdm-settings package is installed (Arch/Manjaro)
-        result = run_command("pacman -Qi gdm-settings", shell=True)
-        if result is not None:
+        result = subprocess.run(
+            ["pacman", "-Qi", "gdm-settings"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode == 0:
             return True
-            
-        # Check if gdm-settings binary exists
         if os.path.exists("/usr/bin/gdm-settings"):
             return True
-            
         return False
     except Exception as e:
         logging.error(f"Error checking gdm-settings: {str(e)}")
         return False
+
+def get_session_info(session_id):
+    """Get loginctl properties for a session"""
+    output = run_command([
+        'loginctl',
+        'show-session',
+        session_id,
+        '-p', 'Name',
+        '-p', 'User',
+        '-p', 'Class',
+        '-p', 'State',
+        '-p', 'Active',
+        '-p', 'Type',
+        '-p', 'Seat',
+        '-p', 'Remote',
+    ])
+    if not output:
+        return {}
+
+    info = {'Id': session_id}
+    for line in output.splitlines():
+        if '=' in line:
+            key, value = line.split('=', 1)
+            info[key] = value
+    return info
+
+def is_real_user_session(info, allow_remote=False):
+    """Return True for a desktop user session, not GDM greeter/manager"""
+    name = info.get('Name', '')
+    if not name or name in ('gdm', 'gdm-greeter'):
+        return False
+    if name.startswith('gdm-'):
+        return False
+    if info.get('Class') != 'user':
+        return False
+    if not allow_remote and info.get('Remote') == 'yes':
+        return False
+
+    try:
+        uid = int(info.get('User') or pwd.getpwnam(name).pw_uid)
+    except (ValueError, KeyError):
+        return False
+    return uid >= 1000
+
+def session_score(info):
+    """Prefer the active graphical local session when more than one exists"""
+    score = 0
+    if info.get('Active') == 'yes':
+        score += 20
+    if info.get('State') in ('active', 'online'):
+        score += 10
+    if info.get('Seat'):
+        score += 8
+    if info.get('Type') in ('wayland', 'x11'):
+        score += 6
+    return score
+
+def get_active_user_session(allow_remote=False):
+    """Get the best real user session and ignore GDM greeter sessions"""
+    sessions = run_command(['loginctl', 'list-sessions', '--no-legend'])
+    if not sessions:
+        return None, {}
+
+    candidates = []
+    for line in sessions.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        session_id = parts[0]
+        info = get_session_info(session_id)
+        if is_real_user_session(info, allow_remote=allow_remote):
+            candidates.append((session_score(info), session_id, info))
+
+    if not candidates:
+        return None, {}
+
+    candidates.sort(reverse=True, key=lambda item: item[0])
+    return candidates[0][1], candidates[0][2]
 
 def restore_default_theme():
     """Restore the default GDM theme when gdm-settings is present"""
@@ -76,22 +157,90 @@ def restore_default_theme():
 def get_display_for_user(user):
     """Try to find the DISPLAY associated with a user session"""
     try:
-        sessions = run_command("loginctl list-sessions --no-legend", shell=True)
-        if not sessions:
-            return ":0"  # fallback
-        for line in sessions.splitlines():
-            parts = line.split()
-            if len(parts) >= 3 and parts[2] == user:
-                session_id = parts[0]
-                display_info = run_command(f"loginctl show-session {session_id} -p Display", shell=True)
-                if display_info and "=" in display_info:
-                    display = display_info.split("=")[1].strip()
-                    if display:
-                        return display
-        return ":0"  # fallback
+        _, info = get_active_user_session()
+        if info.get('Name') == user:
+            display = run_command([
+                'loginctl',
+                'show-session',
+                info.get('Id', ''),
+                '-p',
+                'Display',
+                '--value',
+            ])
+            if display:
+                return display
+        return ":0"
     except Exception as e:
         logging.error(f"Failed to determine display from loginctl: {e}")
         return ":0"
+
+def get_user_bus_address(user):
+    """Get the standard per-user DBUS address if the bus exists"""
+    try:
+        bus_path = f"/run/user/{pwd.getpwnam(user).pw_uid}/bus"
+        if os.path.exists(bus_path):
+            return f"unix:path={bus_path}"
+    except KeyError:
+        pass
+    return None
+
+def get_dbus_address(user):
+    """Get DBUS address for communication with user session"""
+    if not user:
+        return None
+
+    try:
+        pid = run_command(f"pgrep -u {shlex.quote(user)} gnome-session | head -n1", shell=True)
+        if not pid:
+            return get_user_bus_address(user)
+
+        environ_file = f"/proc/{pid}/environ"
+        if not os.path.exists(environ_file):
+            return get_user_bus_address(user)
+
+        with open(environ_file, 'rb') as f:
+            environ = f.read().split(b'\0')
+
+        for var in environ:
+            var_str = var.decode('utf-8', errors='ignore')
+            if var_str.startswith('DBUS_SESSION_BUS_ADDRESS='):
+                return var_str.split('=', 1)[1]
+        return get_user_bus_address(user)
+    except Exception as e:
+        logging.error(f"Error getting DBUS address: {str(e)}")
+        return get_user_bus_address(user)
+
+def read_user_setting(user, display, dbus_address, command):
+    """Run a settings command in the user's session"""
+    env_prefix = []
+    if display:
+        env_prefix.append(f"DISPLAY={shlex.quote(display)}")
+    if dbus_address:
+        env_prefix.append(f"DBUS_SESSION_BUS_ADDRESS={shlex.quote(dbus_address)}")
+    user_command = " ".join(env_prefix + [command])
+    return run_command(['su', '-', user, '-c', user_command])
+
+def get_user_wallpaper(user, display, dbus_address):
+    """Get the wallpaper URI that matches the user's color scheme"""
+    scheme = read_user_setting(
+        user,
+        display,
+        dbus_address,
+        "gsettings get org.gnome.desktop.interface color-scheme",
+    )
+
+    keys = [
+        '/org/gnome/desktop/background/picture-uri',
+        '/org/gnome/desktop/background/picture-uri-dark',
+    ]
+    if scheme and 'prefer-dark' in scheme:
+        keys.reverse()
+
+    for key in keys:
+        wallpaper = read_user_setting(user, display, dbus_address, f"dconf read {key}")
+        if wallpaper and wallpaper != "''":
+            return wallpaper.strip().strip("'")
+    return None
 
 def main():
     logging.info("BigCommunity: Starting GDM wallpaper update")
@@ -112,22 +261,34 @@ def main():
     temp_dir = tempfile.mkdtemp()
     try:
         # Get user session information
-        current_user = run_command("who | awk '!/ tty/ {print $1}' | head -1", shell=True)
+        current_user = os.environ.get('COMM_WALLPAPER_USER')
+        display = os.environ.get('COMM_WALLPAPER_DISPLAY')
+        dbus_address = os.environ.get('COMM_WALLPAPER_DBUS_ADDRESS')
+
+        if not current_user:
+            _, info = get_active_user_session()
+            if not info:
+                _, info = get_active_user_session(allow_remote=True)
+            current_user = info.get('Name')
+
         if not current_user:
             logging.error("Could not determine current user")
             return
-        
-        display = get_display_for_user(current_user)
+
+        if not display:
+            display = get_display_for_user(current_user)
         if not display:
             logging.error("Could not determine display")
             return
-        
+
+        if not dbus_address:
+            dbus_address = get_dbus_address(current_user)
+        if not dbus_address:
+            logging.error("Could not determine DBUS session address")
+            return
+
         # Get wallpaper file
-        wallpaper = run_command(f"su - {current_user} -c \"DISPLAY={display} dconf read /org/gnome/desktop/background/picture-uri\" | tr -d \"'\"", shell=True)
-        if not wallpaper:
-            # Try dark theme wallpaper
-            wallpaper = run_command(f"su - {current_user} -c \"DISPLAY={display} dconf read /org/gnome/desktop/background/picture-uri-dark\" | tr -d \"'\"", shell=True)
-            
+        wallpaper = get_user_wallpaper(current_user, display, dbus_address)
         if not wallpaper:
             logging.error("Could not get wallpaper path")
             return
