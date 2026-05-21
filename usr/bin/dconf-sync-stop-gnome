@@ -10,6 +10,7 @@ DCONF_DIR="${HOME}/.config/dconf"
 SETTINGS_FILE="${DCONF_DIR}/settings.${DESKTOP_ENV}"
 LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
 LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/dconf-sync-${DESKTOP_ENV}.lock"
+LAYOUT_SWITCHER_HASH_FILE="${SETTINGS_FILE}.layout-switcher.sha256"
 
 # Logging function
 log_message() {
@@ -23,6 +24,18 @@ log_message "Stopping dconf sync service"
 if [ -e "${LOCK_FILE}" ]; then
     log_message "Skipping final save - lock file present (${LOCK_FILE})"
     exit 0
+fi
+
+# If layout-switcher wrote settings.gnome and no monitor save changed it
+# afterward, keep that exact layout file. A final live dump during logout can
+# contain transient extension state and make the next login inherit residue.
+if [[ -s "${SETTINGS_FILE}" && -s "${LAYOUT_SWITCHER_HASH_FILE}" ]]; then
+    managed_hash=$(awk '{print $1; exit}' "${LAYOUT_SWITCHER_HASH_FILE}" 2>/dev/null || true)
+    current_hash=$(sha256sum "${SETTINGS_FILE}" 2>/dev/null | awk '{print $1}' || true)
+    if [[ -n "${managed_hash}" && "${managed_hash}" == "${current_hash}" ]]; then
+        log_message "Skipping final save - layout-switcher managed settings unchanged"
+        exit 0
+    fi
 fi
 
 # Check if dconf is still responsive and has valid settings

@@ -15,12 +15,12 @@ LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
 # dump the live dconf — its output would clobber the clean settings.gnome
 # the external tool is in the process of writing.
 LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/dconf-sync-${DESKTOP_ENV}.lock"
+LAYOUT_SWITCHER_HASH_FILE="${SETTINGS_FILE}.layout-switcher.sha256"
 
 # After settings.gnome is written by an external tool, the file's mtime is
-# fresh. The watcher's post-restart initial dump would overwrite it with
-# the live dconf state (which still carries leftover keys from the previous
-# layout). If the file is newer than this many seconds, skip the initial
-# save; the next user-driven dconf change will trigger a normal save anyway.
+# fresh. The watcher's queued dconf events can arrive after the lock is
+# released and overwrite it with live in-flight state. If the file is newer
+# than this many seconds and was not written by this monitor, skip the save.
 FRESH_FILE_SECONDS=10
 
 # Ensure directory exists
@@ -41,9 +41,54 @@ is_dconf_valid() {
     return 0
 }
 
+LAST_MONITOR_FILE_STAMP=""
+
+settings_file_mtime() {
+    stat -c %Y "${SETTINGS_FILE}" 2>/dev/null || echo 0
+}
+
+settings_file_stamp() {
+    stat -c '%Y:%i:%s' "${SETTINGS_FILE}" 2>/dev/null || true
+}
+
+settings_file_age() {
+    local mtime
+    mtime=$(settings_file_mtime)
+    echo "$(($(date +%s) - mtime))"
+}
+
+settings_file_is_fresh_external() {
+    if [[ ! -s "${SETTINGS_FILE}" ]]; then
+        return 1
+    fi
+
+    local age
+    age=$(settings_file_age)
+    if [ "${age}" -ge "${FRESH_FILE_SECONDS}" ]; then
+        return 1
+    fi
+
+    local stamp
+    stamp=$(settings_file_stamp)
+    if [[ -z "${stamp}" || "${stamp}" == "${LAST_MONITOR_FILE_STAMP}" ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
 # Debounce mechanism - avoid saving too frequently
 LAST_SAVE=0
 DEBOUNCE_SECONDS=2
+STARTED_AT=$(date +%s)
+STARTUP_GRACE_SECONDS=20
+
+in_startup_grace() {
+    local current_time
+    current_time=$(date +%s)
+    local uptime=$((current_time - STARTED_AT))
+    [ "${uptime}" -lt "${STARTUP_GRACE_SECONDS}" ]
+}
 
 save_settings() {
     local current_time=$(date +%s)
@@ -56,6 +101,21 @@ save_settings() {
     # External tool is mid-apply; do not clobber its in-flight write.
     if [ -e "${LOCK_FILE}" ]; then
         log_message "Skipping save - lock file present (${LOCK_FILE})"
+        return
+    fi
+
+    if settings_file_is_fresh_external; then
+        local file_age
+        file_age=$(settings_file_age)
+        log_message "Skipping save - settings.gnome was externally updated ${file_age}s ago"
+        LAST_SAVE=${current_time}
+        return
+    fi
+
+    if in_startup_grace; then
+        local uptime=$((current_time - STARTED_AT))
+        log_message "Skipping save - startup grace (${uptime}s/${STARTUP_GRACE_SECONDS}s)"
+        LAST_SAVE=${current_time}
         return
     fi
 
@@ -81,7 +141,9 @@ save_settings() {
             cp -f "${SETTINGS_FILE}" "${SETTINGS_FILE}.bak"
         fi
         mv "${SETTINGS_FILE}.tmp" "${SETTINGS_FILE}"
+        rm -f "${LAYOUT_SWITCHER_HASH_FILE}"
         sync "${SETTINGS_FILE}"
+        LAST_MONITOR_FILE_STAMP=$(settings_file_stamp)
         LAST_SAVE=${current_time}
         log_message "Settings saved successfully"
     else
@@ -100,13 +162,11 @@ sleep 3
 # Check initial state
 if [ -e "${LOCK_FILE}" ]; then
     log_message "Initial save skipped - lock file present (external apply in progress)"
-elif [ -s "${SETTINGS_FILE}" ] && \
-     [ $(($(date +%s) - $(stat -c %Y "${SETTINGS_FILE}" 2>/dev/null || echo 0))) -lt "${FRESH_FILE_SECONDS}" ]; then
-    file_age=$(($(date +%s) - $(stat -c %Y "${SETTINGS_FILE}")))
+elif settings_file_is_fresh_external; then
+    file_age=$(settings_file_age)
     log_message "Initial save skipped - settings.gnome is fresh (${file_age}s old)"
 elif is_dconf_valid; then
-    log_message "Initial dconf state is valid, saving..."
-    save_settings
+    log_message "Initial dconf state is valid; waiting for user changes"
 else
     current_icon=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null || echo "empty")
     log_message "Initial dconf state appears reset (icon-theme: $current_icon), skipping initial save"

@@ -24,22 +24,11 @@ else
     logger "sync-gnome-theme-to-qt.sh not found"
 fi
 
-# If using mesa amber force cairo renderer
-if compgen -G /var/lib/pacman/local/mesa-amber-* || systemd-detect-virt -q; then
+# Force software GTK renderer in VMs/mesa-amber sessions with broken Vulkan.
+if compgen -G /var/lib/pacman/local/mesa-amber-* >/dev/null || systemd-detect-virt -q; then
     [[ -z $GSK_RENDERER ]] && export GSK_RENDERER="cairo"
-
-    # blur-my-shell relies on GPU shaders; under cairo (software) it
-    # turns the session into a slideshow on old machines and VMs.
-    BLUR_UUID="blur-my-shell@aunetx"
-    disabled=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo "@as []")
-    if [[ "$disabled" != *"$BLUR_UUID"* ]]; then
-        if [[ "$disabled" == "@as []" || "$disabled" == "[]" ]]; then
-            gsettings set org.gnome.shell disabled-extensions "['$BLUR_UUID']" 2>/dev/null || true
-        else
-            gsettings set org.gnome.shell disabled-extensions "${disabled%]}, '$BLUR_UUID']" 2>/dev/null || true
-        fi
-    fi
 fi
+
 
 # Force language
 if [ "$LANGUAGE" = "" ]; then
@@ -194,6 +183,7 @@ load_dconf_config() {
                 fi
             fi
         fi
+
 
         # Restart the theme sync path watcher now that settings are loaded
         log_message "Restarting sync-gnome-theme-to-qt.path..."
