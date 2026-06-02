@@ -13,7 +13,7 @@ import subprocess
 import logging
 import signal
 import pwd
-import shlex
+import select
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +27,17 @@ running = True
 
 # Lock file to coordinate with other scripts
 LOCK_FILE = "/var/lock/gdm-theme-operations.lock"
+BACKGROUND_PATH = "/org/gnome/desktop/background/"
+BACKGROUND_KEYS = [
+    "/org/gnome/desktop/background/picture-uri",
+    "/org/gnome/desktop/background/picture-uri-dark",
+]
+MONITOR_CHECK_INTERVAL = 60
+SESSION_CHECK_INTERVAL = 10
+POLL_FALLBACK_INTERVAL = 10
+
+_last_monitor_check = 0
+_last_should_monitor = None
 
 def signal_handler(sig, frame):
     """Signal handler for safe shutdown"""
@@ -34,23 +45,49 @@ def signal_handler(sig, frame):
     logging.info(f"Signal received: {sig}")
     running = False
 
+def is_pid_running(pid):
+    """Return True when a lock owner still exists."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+
+def remove_stale_lock():
+    """Remove stale lock files left by interrupted updates."""
+    try:
+        with open(LOCK_FILE, "r") as f:
+            lock_pid = int(f.read().strip() or "0")
+        if lock_pid and is_pid_running(lock_pid):
+            return False
+        os.unlink(LOCK_FILE)
+        logging.warning("Removed stale GDM wallpaper lock")
+        return True
+    except FileNotFoundError:
+        return True
+    except Exception as e:
+        logging.warning(f"Could not inspect GDM wallpaper lock: {e}")
+        return False
+
 def acquire_lock(timeout=10):
     """Acquire lock to coordinate with other scripts"""
-    try:
-        lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_WRONLY | os.O_EXCL)
-        os.write(lock_fd, str(os.getpid()).encode())
-        return lock_fd
-    except OSError:
-        count = 0
-        while count < timeout:
-            try:
-                lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_WRONLY | os.O_EXCL)
-                os.write(lock_fd, str(os.getpid()).encode())
-                return lock_fd
-            except OSError:
-                time.sleep(1)
-                count += 1
-        return None
+    deadline = time.monotonic() + timeout
+    while running and time.monotonic() <= deadline:
+        try:
+            lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_WRONLY | os.O_EXCL)
+            os.write(lock_fd, str(os.getpid()).encode())
+            return lock_fd
+        except FileExistsError:
+            remove_stale_lock()
+            time.sleep(1)
+        except OSError as e:
+            logging.warning(f"Could not acquire GDM wallpaper lock: {e}")
+            time.sleep(1)
+    return None
 
 def release_lock(lock_fd):
     """Release the lock"""
@@ -58,21 +95,39 @@ def release_lock(lock_fd):
         if lock_fd is not None:
             os.close(lock_fd)
             os.unlink(LOCK_FILE)
-    except:
+    except Exception:
         pass
 
-def run_command(cmd, shell=False, env=None):
+def run_command(cmd, shell=False, env=None, timeout=15):
     """Execute command and return output or None on error"""
     try:
         if shell:
-            result = subprocess.run(cmd, shell=True, check=True, text=True, capture_output=True, env=env)
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+                timeout=timeout,
+            )
         else:
-            result = subprocess.run(cmd, check=True, text=True, capture_output=True, env=env)
+            result = subprocess.run(
+                cmd,
+                check=True,
+                text=True,
+                capture_output=True,
+                env=env,
+                timeout=timeout,
+            )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         logging.error(f"Error executing command: {cmd}")
         logging.error(f"Error: {e}")
         logging.error(f"Output: {e.stderr}")
+        return None
+    except subprocess.TimeoutExpired:
+        logging.error(f"Command timed out: {cmd}")
         return None
     except Exception as e:
         logging.error(f"Unexpected error executing: {cmd}")
@@ -97,17 +152,31 @@ def is_gdm_settings_installed():
         logging.error(f"Error checking gdm-settings: {str(e)}")
         return False
 
-def should_monitor_wallpaper():
+def should_monitor_wallpaper(force=False):
     """Check if we should monitor wallpaper (gdm-settings not installed)"""
+    global _last_monitor_check, _last_should_monitor
+
+    now = time.monotonic()
+    if (
+        not force
+        and _last_should_monitor is not None
+        and now - _last_monitor_check < MONITOR_CHECK_INTERVAL
+    ):
+        return _last_should_monitor
+
+    _last_monitor_check = now
     if is_gdm_settings_installed():
-        return False
+        _last_should_monitor = False
+        return _last_should_monitor
     
     # Check if our theme files exist
     if not os.path.exists("/usr/share/gnome-shell/gnome-shell-theme.gresource.default"):
         logging.warning("BigCommunity: Default theme backup not found")
-        return False
+        _last_should_monitor = False
+        return _last_should_monitor
     
-    return True
+    _last_should_monitor = True
+    return _last_should_monitor
 
 def get_session_info(session_id):
     """Get loginctl properties for a session"""
@@ -229,7 +298,8 @@ def get_dbus_address(user):
         return None
         
     try:
-        pid = run_command(f"pgrep -u {user} gnome-session | head -n1", shell=True)
+        pids = run_command(['pgrep', '-u', user, 'gnome-session'])
+        pid = pids.splitlines()[0] if pids else None
         if not pid:
             return get_user_bus_address(user)
             
@@ -249,35 +319,215 @@ def get_dbus_address(user):
         logging.error(f"Error getting DBUS address: {str(e)}")
         return get_user_bus_address(user)
 
+def user_env_args(user, display, dbus_address):
+    """Build environment arguments for commands run inside the user session."""
+    env_args = []
+    try:
+        user_info = pwd.getpwnam(user)
+        env_args.extend([
+            f"HOME={user_info.pw_dir}",
+            f"USER={user}",
+            f"LOGNAME={user}",
+            f"XDG_RUNTIME_DIR=/run/user/{user_info.pw_uid}",
+        ])
+    except KeyError:
+        pass
+    if display:
+        env_args.append(f"DISPLAY={display}")
+    if dbus_address:
+        env_args.append(f"DBUS_SESSION_BUS_ADDRESS={dbus_address}")
+    return env_args
+
+def user_command_args(user, command, display=None, dbus_address=None):
+    """Build a runuser command without opening an interactive shell."""
+    return [
+        'runuser',
+        '-u',
+        user,
+        '--',
+        'env',
+        *user_env_args(user, display, dbus_address),
+        *command,
+    ]
+
+def run_user_command(user, command, display=None, dbus_address=None, timeout=10):
+    """Run a command in the user session without shell quoting."""
+    return run_command(
+        user_command_args(user, command, display, dbus_address),
+        timeout=timeout,
+    )
+
+def start_user_process(user, command, display=None, dbus_address=None):
+    """Start a long-running command in the user session."""
+    try:
+        return subprocess.Popen(
+            user_command_args(user, command, display, dbus_address),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except Exception as e:
+        logging.warning(f"Failed to start user process {command}: {e}")
+        return None
+
 def get_user_wallpaper(user, display, dbus_address):
     """Get user's current wallpaper"""
     if not user or not display or not dbus_address:
         return None
 
     try:
-        env_prefix = (
-            f"DISPLAY={shlex.quote(display)} "
-            f"DBUS_SESSION_BUS_ADDRESS={shlex.quote(dbus_address)}"
+        scheme = run_user_command(
+            user,
+            ['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'],
+            display,
+            dbus_address,
         )
-        scheme_cmd = f"{env_prefix} gsettings get org.gnome.desktop.interface color-scheme"
-        scheme = run_command(['su', '-', user, '-c', scheme_cmd])
 
-        keys = [
-            '/org/gnome/desktop/background/picture-uri',
-            '/org/gnome/desktop/background/picture-uri-dark',
-        ]
+        keys = list(BACKGROUND_KEYS)
         if scheme and 'prefer-dark' in scheme:
             keys.reverse()
 
         for key in keys:
-            cmd = f"{env_prefix} dconf read {key}"
-            wallpaper_uri = run_command(['su', '-', user, '-c', cmd])
+            wallpaper_uri = run_user_command(
+                user,
+                ['dconf', 'read', key],
+                display,
+                dbus_address,
+            )
             if wallpaper_uri and wallpaper_uri != "''":
                 return wallpaper_uri
         return None
     except Exception as e:
         logging.error(f"Error getting wallpaper: {str(e)}")
         return None
+
+def update_gdm_wallpaper(user, display, dbus_address):
+    """Call the updater while holding the shared theme lock."""
+    lock_fd = acquire_lock(5)
+    if lock_fd is None:
+        logging.warning("Could not acquire lock for theme update")
+        return False
+
+    try:
+        env = os.environ.copy()
+        env.update({
+            'COMM_WALLPAPER_USER': user,
+            'COMM_WALLPAPER_DISPLAY': display,
+            'COMM_WALLPAPER_DBUS_ADDRESS': dbus_address,
+        })
+        result = run_command(['/usr/bin/comm-update-gdm-wallpaper'], env=env, timeout=120)
+        if result is not None:
+            logging.info("BigCommunity: GDM wallpaper updated successfully")
+            return True
+        return False
+    finally:
+        release_lock(lock_fd)
+
+def stop_process(process):
+    """Terminate a helper process without leaving a dconf watch behind."""
+    if not process or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=3)
+
+def monitor_session(session_id, user, display, dbus_address):
+    """Monitor one graphical session using dconf watch with polling fallback."""
+    logging.info(f"BigCommunity: Monitoring wallpaper for user {user}")
+    watch = start_user_process(
+        user,
+        ['dconf', 'watch', BACKGROUND_PATH],
+        display,
+        dbus_address,
+    )
+    if watch:
+        logging.info("BigCommunity: dconf wallpaper watcher active")
+    else:
+        logging.warning("BigCommunity: Falling back to wallpaper polling")
+
+    old_wallpaper = None
+    have_wallpaper = False
+    next_session_check = 0
+    next_poll = 0
+    retry_wallpaper = None
+    retry_after = 0
+
+    try:
+        while running and should_monitor_wallpaper():
+            now = time.monotonic()
+
+            if now >= next_session_check:
+                if get_active_session() != session_id:
+                    logging.info(f"Session {session_id} is no longer active")
+                    final_wallpaper = get_user_wallpaper(user, display, dbus_address)
+                    if (
+                        final_wallpaper
+                        and (
+                            not have_wallpaper
+                            or final_wallpaper != old_wallpaper
+                            or retry_wallpaper == final_wallpaper
+                        )
+                    ):
+                        logging.info("Final wallpaper sync before leaving session")
+                        update_gdm_wallpaper(user, display, dbus_address)
+                    break
+                next_session_check = now + SESSION_CHECK_INTERVAL
+
+            changed = not have_wallpaper
+            if retry_wallpaper and now >= retry_after:
+                changed = True
+
+            if watch and watch.poll() is None and not changed:
+                readable, _, _ = select.select([watch.stdout], [], [], 1)
+                if readable:
+                    line = watch.stdout.readline()
+                    if line:
+                        logging.debug(f"Wallpaper dconf change: {line.strip()}")
+                        changed = True
+                    else:
+                        logging.warning("Wallpaper dconf watcher closed")
+                        stop_process(watch)
+                        watch = None
+                        next_poll = 0
+            elif watch and watch.poll() is not None:
+                stderr = watch.stderr.read().strip() if watch.stderr else ""
+                logging.warning(f"Wallpaper dconf watcher exited: {stderr}")
+                watch = None
+                next_poll = 0
+
+            if not watch and not changed:
+                if now >= next_poll:
+                    changed = True
+                    next_poll = now + POLL_FALLBACK_INTERVAL
+                else:
+                    time.sleep(1)
+                    continue
+
+            if not changed:
+                continue
+
+            # Let dconf settle when several keys change together.
+            time.sleep(0.3)
+            new_wallpaper = get_user_wallpaper(user, display, dbus_address)
+            if not new_wallpaper:
+                have_wallpaper = True
+                continue
+
+            if not have_wallpaper or new_wallpaper != old_wallpaper or retry_wallpaper == new_wallpaper:
+                logging.info(f"BigCommunity: Wallpaper changed to: {new_wallpaper}")
+                if update_gdm_wallpaper(user, display, dbus_address):
+                    retry_wallpaper = None
+                else:
+                    retry_wallpaper = new_wallpaper
+                    retry_after = time.monotonic() + POLL_FALLBACK_INTERVAL
+                    logging.warning("GDM wallpaper update failed; will retry later")
+                old_wallpaper = new_wallpaper
+                have_wallpaper = True
+    finally:
+        stop_process(watch)
 
 def main():
     """Main function to monitor wallpaper changes"""
@@ -294,7 +544,7 @@ def main():
     logging.info("BigCommunity wallpaper sync started")
     
     # Initial status check
-    if should_monitor_wallpaper():
+    if should_monitor_wallpaper(force=True):
         logging.info("BigCommunity wallpaper sync active - monitoring enabled")
     else:
         logging.info("BigCommunity wallpaper sync in compatibility mode - gdm-settings detected")
@@ -304,7 +554,7 @@ def main():
             # Check if we should continue monitoring
             if not should_monitor_wallpaper():
                 logging.debug("Monitoring disabled - gdm-settings present")
-                time.sleep(10)  # Check less frequently when disabled
+                time.sleep(MONITOR_CHECK_INTERVAL)
                 continue
             
             # Get active session
@@ -326,47 +576,7 @@ def main():
                 logging.debug(f"Could not get DBUS address for user {user}")
                 time.sleep(5)
                 continue
-                
-            logging.debug(f"BigCommunity: Monitoring wallpaper for user {user}")
-            
-            old_wallpaper = None
-            
-            # Monitor this session
-            while running and should_monitor_wallpaper():
-                try:
-                    if not get_active_session() == session_id:
-                        logging.info(f"Session {session_id} is no longer active")
-                        break
-                        
-                    new_wallpaper = get_user_wallpaper(user, display, dbus_address)
-                    
-                    if new_wallpaper != old_wallpaper:
-                        logging.info(f"BigCommunity: Wallpaper changed to: {new_wallpaper}")
-                        
-                        # Acquire lock before updating theme
-                        lock_fd = acquire_lock(5)
-                        if lock_fd is not None:
-                            try:
-                                env = os.environ.copy()
-                                env.update({
-                                    'COMM_WALLPAPER_USER': user,
-                                    'COMM_WALLPAPER_DISPLAY': display,
-                                    'COMM_WALLPAPER_DBUS_ADDRESS': dbus_address,
-                                })
-                                result = run_command(['/usr/bin/comm-update-gdm-wallpaper'], env=env)
-                                if result is not None:
-                                    old_wallpaper = new_wallpaper
-                                    logging.info("BigCommunity: GDM wallpaper updated successfully")
-                            finally:
-                                release_lock(lock_fd)
-                        else:
-                            logging.warning("Could not acquire lock for theme update")
-                                
-                    time.sleep(5)
-                    
-                except Exception as e:
-                    logging.error(f"Error during monitoring: {str(e)}")
-                    break
+            monitor_session(session_id, user, display, dbus_address)
                     
         except Exception as e:
             logging.error(f"Error in main loop: {str(e)}")
