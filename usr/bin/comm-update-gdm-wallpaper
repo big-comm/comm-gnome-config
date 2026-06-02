@@ -263,6 +263,15 @@ def get_user_wallpaper(user, display, dbus_address):
             return wallpaper.strip().strip("'")
     return None
 
+def normalize_wallpaper_uri(wallpaper):
+    """Normalize a wallpaper URI passed by dconf or the monitor service."""
+    if not wallpaper:
+        return None
+    wallpaper = wallpaper.strip().strip("'").strip('"')
+    if not wallpaper:
+        return None
+    return wallpaper
+
 def main():
     logging.info("BigCommunity: Starting GDM wallpaper update")
     
@@ -308,8 +317,13 @@ def main():
             logging.error("Could not determine DBUS session address")
             return
 
-        # Get wallpaper file
-        wallpaper = get_user_wallpaper(current_user, display, dbus_address)
+        # Get wallpaper file. Prefer the value observed by wallpaper-monitor so
+        # logout-time updates do not reread stale dconf state.
+        wallpaper = normalize_wallpaper_uri(os.environ.get('COMM_WALLPAPER_URI'))
+        if wallpaper:
+            logging.info("BigCommunity: Using wallpaper provided by monitor")
+        else:
+            wallpaper = get_user_wallpaper(current_user, display, dbus_address)
         if not wallpaper:
             logging.error("Could not get wallpaper path")
             return

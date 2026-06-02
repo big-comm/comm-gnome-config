@@ -401,7 +401,7 @@ def get_user_wallpaper(user, display, dbus_address):
         logging.error(f"Error getting wallpaper: {str(e)}")
         return None
 
-def update_gdm_wallpaper(user, display, dbus_address):
+def update_gdm_wallpaper(user, display, dbus_address, wallpaper_uri=None):
     """Call the updater while holding the shared theme lock."""
     lock_fd = acquire_lock(5)
     if lock_fd is None:
@@ -415,6 +415,8 @@ def update_gdm_wallpaper(user, display, dbus_address):
             'COMM_WALLPAPER_DISPLAY': display,
             'COMM_WALLPAPER_DBUS_ADDRESS': dbus_address,
         })
+        if wallpaper_uri:
+            env['COMM_WALLPAPER_URI'] = wallpaper_uri
         result = run_command(['/usr/bin/comm-update-gdm-wallpaper'], env=env, timeout=120)
         if result is not None:
             logging.info("BigCommunity: GDM wallpaper updated successfully")
@@ -462,17 +464,9 @@ def monitor_session(session_id, user, display, dbus_address):
             if now >= next_session_check:
                 if get_active_session() != session_id:
                     logging.info(f"Session {session_id} is no longer active")
-                    final_wallpaper = get_user_wallpaper(user, display, dbus_address)
-                    if (
-                        final_wallpaper
-                        and (
-                            not have_wallpaper
-                            or final_wallpaper != old_wallpaper
-                            or retry_wallpaper == final_wallpaper
-                        )
-                    ):
-                        logging.info("Final wallpaper sync before leaving session")
-                        update_gdm_wallpaper(user, display, dbus_address)
+                    if retry_wallpaper:
+                        logging.info("Final wallpaper sync retry before leaving session")
+                        update_gdm_wallpaper(user, display, dbus_address, retry_wallpaper)
                     break
                 next_session_check = now + SESSION_CHECK_INTERVAL
 
@@ -518,7 +512,7 @@ def monitor_session(session_id, user, display, dbus_address):
 
             if not have_wallpaper or new_wallpaper != old_wallpaper or retry_wallpaper == new_wallpaper:
                 logging.info(f"BigCommunity: Wallpaper changed to: {new_wallpaper}")
-                if update_gdm_wallpaper(user, display, dbus_address):
+                if update_gdm_wallpaper(user, display, dbus_address, new_wallpaper):
                     retry_wallpaper = None
                 else:
                     retry_wallpaper = new_wallpaper

@@ -90,11 +90,24 @@ in_startup_grace() {
     [ "${uptime}" -lt "${STARTUP_GRACE_SECONDS}" ]
 }
 
+is_immediate_save_change() {
+    local change="${1:-}"
+    case "${change}" in
+        /org/gnome/desktop/background/picture-uri|\
+        /org/gnome/desktop/background/picture-uri-dark|\
+        /org/gnome/desktop/screensaver/picture-uri)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 save_settings() {
+    local change="${1:-}"
     local current_time=$(date +%s)
     local time_diff=$((current_time - LAST_SAVE))
 
-    if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ]; then
+    if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ] && ! is_immediate_save_change "${change}"; then
         return
     fi
 
@@ -112,11 +125,13 @@ save_settings() {
         return
     fi
 
-    if in_startup_grace; then
+    if in_startup_grace && ! is_immediate_save_change "${change}"; then
         local uptime=$((current_time - STARTED_AT))
         log_message "Skipping save - startup grace (${uptime}s/${STARTUP_GRACE_SECONDS}s)"
         LAST_SAVE=${current_time}
         return
+    elif in_startup_grace; then
+        log_message "Saving during startup grace for user wallpaper change"
     fi
 
     # Verify dconf has valid settings before saving
@@ -176,7 +191,10 @@ fi
 log_message "Monitoring dconf changes..."
 dconf watch / | while read -r change; do
     log_message "Change detected: ${change}"
-    save_settings
+    if is_immediate_save_change "${change}"; then
+        sleep 0.5
+    fi
+    save_settings "${change}"
 done
 
 log_message "Monitor stopped"
