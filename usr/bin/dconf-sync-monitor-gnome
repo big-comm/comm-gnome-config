@@ -102,34 +102,39 @@ is_immediate_save_change() {
     return 1
 }
 
+# Returns 0 when settings were actually written, 1 when skipped or failed.
+# The caller keeps a "pending" flag from this so a change skipped under the
+# lock / freshness / grace / debounce guards is retried later (deferred flush)
+# instead of being lost — the loop is edge-triggered, so without the retry a
+# skipped change would only be reconsidered when the *next* change arrives.
+# Skip paths no longer bump LAST_SAVE: doing so extended the debounce blackout
+# and could swallow a genuine user change that arrived right after a skip.
 save_settings() {
     local change="${1:-}"
     local current_time=$(date +%s)
     local time_diff=$((current_time - LAST_SAVE))
 
     if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ] && ! is_immediate_save_change "${change}"; then
-        return
+        return 1
     fi
 
     # External tool is mid-apply; do not clobber its in-flight write.
     if [ -e "${LOCK_FILE}" ]; then
         log_message "Skipping save - lock file present (${LOCK_FILE})"
-        return
+        return 1
     fi
 
     if settings_file_is_fresh_external; then
         local file_age
         file_age=$(settings_file_age)
         log_message "Skipping save - settings.gnome was externally updated ${file_age}s ago"
-        LAST_SAVE=${current_time}
-        return
+        return 1
     fi
 
     if in_startup_grace && ! is_immediate_save_change "${change}"; then
         local uptime=$((current_time - STARTED_AT))
         log_message "Skipping save - startup grace (${uptime}s/${STARTUP_GRACE_SECONDS}s)"
-        LAST_SAVE=${current_time}
-        return
+        return 1
     elif in_startup_grace; then
         log_message "Saving during startup grace for user wallpaper change"
     fi
@@ -138,7 +143,7 @@ save_settings() {
     if ! is_dconf_valid; then
         local current_icon=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null || echo "empty")
         log_message "Skipping save - dconf appears reset (icon-theme: $current_icon)"
-        return
+        return 1
     fi
 
     log_message "Saving dconf settings to ${SETTINGS_FILE}"
@@ -149,7 +154,7 @@ save_settings() {
         if [[ ! -s "${SETTINGS_FILE}.tmp" ]]; then
             log_message "WARNING: dconf dump produced empty output, skipping save"
             rm -f "${SETTINGS_FILE}.tmp"
-            return
+            return 1
         fi
         # Keep backup of current good settings before overwriting
         if [[ -s "${SETTINGS_FILE}" ]]; then
@@ -161,9 +166,11 @@ save_settings() {
         LAST_MONITOR_FILE_STAMP=$(settings_file_stamp)
         LAST_SAVE=${current_time}
         log_message "Settings saved successfully"
+        return 0
     else
         log_message "ERROR: Failed to dump dconf settings"
         rm -f "${SETTINGS_FILE}.tmp"
+        return 1
     fi
 }
 
@@ -187,14 +194,47 @@ else
     log_message "Initial dconf state appears reset (icon-theme: $current_icon), skipping initial save"
 fi
 
-# Monitor dconf changes
+# Monitor dconf changes.
 log_message "Monitoring dconf changes..."
-dconf watch / | while read -r change; do
-    log_message "Change detected: ${change}"
-    if is_immediate_save_change "${change}"; then
-        sleep 0.5
-    fi
-    save_settings "${change}"
-done
 
-log_message "Monitor stopped"
+# Deferred-flush interval (seconds). When a change is skipped (lock held, file
+# fresh, startup grace, debounce) we set pending=1; if no further change
+# arrives, the read timeout fires a retry so the change is never lost.
+FLUSH_INTERVAL=3
+
+# Supervisory loop: if "dconf watch" dies (dconf service restart, D-Bus blip),
+# the pipe closes, the inner loop breaks, and we restart it — instead of
+# letting "set -e" + pipefail kill the daemon on the spot. systemd
+# Restart=on-failure remains only as the outer net of last resort.
+while true; do
+    pending=0
+    change=""
+    dconf watch / | while true; do
+        if read -r -t "${FLUSH_INTERVAL}" change; then
+            log_message "Change detected: ${change}"
+            if is_immediate_save_change "${change}"; then
+                sleep 0.5
+            fi
+            if save_settings "${change}"; then
+                pending=0
+            else
+                pending=1
+            fi
+        else
+            rc=$?
+            # rc > 128 → read timed out: flush a deferred save if one is pending.
+            # rc <= 128 → EOF: the watch pipe closed; leave the inner loop so the
+            # supervisor can restart "dconf watch".
+            if [ "${rc}" -le 128 ]; then
+                break
+            fi
+            if [ "${pending}" -eq 1 ]; then
+                if save_settings ""; then
+                    pending=0
+                fi
+            fi
+        fi
+    done || true
+    log_message "dconf watch pipe ended; restarting in 2s"
+    sleep 2
+done
