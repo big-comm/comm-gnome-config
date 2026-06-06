@@ -399,7 +399,20 @@ def main():
         
         # Install new theme only if gdm-settings is not present
         if not is_gdm_settings_installed():
-            shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource")
+            # Atomic install. An in-place shutil.copy() truncates+rewrites the
+            # SAME inode that the RUNNING gnome-shell has mmap'd as a registered
+            # GResource, corrupting it mid-write — the shell then can't find
+            # gnome-shell-dark.css and renders UNSTYLED (raw quick-settings, no
+            # panel background) on the next live theme reload (e.g. when a layout
+            # switch changes the wallpaper and triggers this update). os.replace
+            # is atomic and swaps in a NEW inode, so the running shell keeps its
+            # still-valid resource and the new GDM wallpaper is picked up at the
+            # next login.
+            dst = "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+            fd, tmp = tempfile.mkstemp(dir="/usr/share/gnome-shell", prefix=".gstheme-", suffix=".tmp")
+            os.close(fd)
+            shutil.copy("gnome-shell-theme.gresource", tmp)
+            os.replace(tmp, dst)
             logging.info("BigCommunity: GDM wallpaper theme successfully updated")
         else:
             logging.info("BigCommunity: gdm-settings detected after processing - theme not applied")
