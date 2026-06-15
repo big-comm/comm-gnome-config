@@ -1,0 +1,16 @@
+[Unit]
+Description=Apply pending BigCommunity GDM login wallpaper before the greeter
+# Run early, before the display manager paints the greeter, and only when a
+# wallpaper update was staged while a user session was alive. At this point no
+# user gnome-shell is running, so swapping the theme gresource is safe.
+DefaultDependencies=no
+After=local-fs.target
+Before=gdm.service display-manager.service
+ConditionPathExists=/usr/share/gnome-shell/gnome-shell-theme.gresource.pending
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/comm-update-gdm-wallpaper --apply-pending
+
+[Install]
+WantedBy=gdm.service
