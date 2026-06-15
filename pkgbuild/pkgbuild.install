@@ -115,9 +115,6 @@ post_install() {
 
     manage_wallpaper_service "enable"
 
-    # Apply staged GDM login wallpaper before the greeter on the next boot
-    systemctl enable comm-gdm-wallpaper-pending.service >/dev/null 2>&1
-
     # Set default avatar for all users and enable boot-time service
     printMsg "Setting default user avatar for GDM..."
     /usr/bin/comm-set-default-avatar 2>/dev/null
@@ -150,9 +147,6 @@ post_upgrade() {
     fi
 
     manage_wallpaper_service "restart"
-
-    # Apply staged GDM login wallpaper before the greeter on the next boot
-    systemctl enable comm-gdm-wallpaper-pending.service >/dev/null 2>&1
 
     # Update default avatar for any new users
     printMsg "Updating default user avatar for GDM..."
