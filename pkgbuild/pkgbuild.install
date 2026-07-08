@@ -28,6 +28,23 @@ is_gdm_settings_installed() {
     fi
 }
 
+# Atomically install a gresource over the live theme: write a temp file in
+# the same directory and rename it so the inode the running gnome-shell has
+# mmap'd is never truncated in place.
+install_gresource() {
+    local src="$1"
+    local dst="/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    local tmp_file
+
+    tmp_file=$(mktemp "/usr/share/gnome-shell/.gstheme-XXXXXX") || return 1
+    if ! cp -f "$src" "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
+    fi
+    chmod 644 "$tmp_file"
+    mv -f "$tmp_file" "$dst"
+}
+
 # Function to apply the appropriate theme based on gdm-settings presence
 apply_appropriate_theme() {
     # Always create backup if it doesn't exist
@@ -42,15 +59,13 @@ apply_appropriate_theme() {
     if is_gdm_settings_installed; then
         printMsg "gdm-settings detected - applying default theme for compatibility..."
         if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
-            cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-            chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+            install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
         fi
         return 1  # Signal that default theme was applied
     else
         printMsg "Applying BigCommunity custom wallpaper sync theme..."
         if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
-            cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-            chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+            install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
         fi
         return 0  # Signal that custom theme was applied
     fi
@@ -137,6 +152,11 @@ pre_upgrade() {
 
 # Function executed after package upgrade
 post_upgrade() {
+    # One-time cleanup for systems that installed the reverted staging version
+    rm -f "/etc/systemd/system/gdm.service.wants/comm-gdm-wallpaper-pending.service"
+    systemctl disable comm-gdm-wallpaper-pending.service 2>/dev/null || true
+    rm -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.pending"
+
     apply_appropriate_theme
     theme_result=$?
 
@@ -180,8 +200,7 @@ pre_remove() {
     # Restore original theme
     if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
         printMsg "Restoring original GNOME shell theme..."
-        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-        chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+        install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
     fi
 }
 

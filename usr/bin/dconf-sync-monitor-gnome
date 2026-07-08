@@ -113,15 +113,25 @@ save_settings() {
     local change="${1:-}"
     local current_time=$(date +%s)
     local time_diff=$((current_time - LAST_SAVE))
+    local lock_pid
 
     if [ ${time_diff} -lt ${DEBOUNCE_SECONDS} ] && ! is_immediate_save_change "${change}"; then
         return 1
     fi
 
     # External tool is mid-apply; do not clobber its in-flight write.
+    # The holder (layout-switcher) writes its PID into the lock; if that
+    # process died (e.g. SIGKILL mid-apply) the leftover lock would mute
+    # settings persistence for the whole session — treat it as stale.
     if [ -e "${LOCK_FILE}" ]; then
-        log_message "Skipping save - lock file present (${LOCK_FILE})"
-        return 1
+        lock_pid=$(cat "${LOCK_FILE}" 2>/dev/null || true)
+        if [[ -z "${lock_pid}" ]] || ! kill -0 "${lock_pid}" 2>/dev/null; then
+            log_message "Removing stale lock (owner ${lock_pid:-unknown} not running)"
+            rm -f "${LOCK_FILE}"
+        else
+            log_message "Skipping save - lock file present (${LOCK_FILE})"
+            return 1
+        fi
     fi
 
     if settings_file_is_fresh_external; then

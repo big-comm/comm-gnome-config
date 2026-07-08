@@ -6,6 +6,67 @@
 log_file="/var/log/gdm-theme-restore.log"
 echo "$(date) - Starting GDM theme restoration" >> $log_file
 
+# Lock file shared with wallpaper-monitor and handle-gdm-settings-conflict
+lock_file="/var/lock/gdm-theme-operations.lock"
+
+# Function to remove a lock left behind by a dead process
+remove_stale_lock() {
+    local lock_pid
+    lock_pid=$(cat "$lock_file" 2>/dev/null)
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+        return 1
+    fi
+    rm -f "$lock_file"
+    echo "$(date) - Removed stale GDM theme lock" >> $log_file
+    return 0
+}
+
+# Function to acquire lock (noclobber creation, stale-PID aware)
+acquire_lock() {
+    local timeout=30
+    local count=0
+
+    while [ $count -lt $timeout ]; do
+        if (set -C; echo $$ > "$lock_file") 2>/dev/null; then
+            return 0
+        fi
+        remove_stale_lock || sleep 1
+        count=$((count + 1))
+    done
+
+    echo "$(date) - Timeout waiting for lock" >> $log_file
+    return 1
+}
+
+# Function to release lock
+release_lock() {
+    rm -f "$lock_file"
+}
+
+# Atomically install a gresource over the live theme: write a temp file in
+# the same directory and rename it so the inode the running gnome-shell has
+# mmap'd is never truncated in place.
+install_gresource() {
+    local src="$1"
+    local dst="/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    local tmp_file
+
+    tmp_file=$(mktemp "/usr/share/gnome-shell/.gstheme-XXXXXX") || return 1
+    if ! cp -f "$src" "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
+    fi
+    chmod 644 "$tmp_file"
+    mv -f "$tmp_file" "$dst"
+}
+
+# Serialize with other GDM theme operations before touching the live gresource
+if ! acquire_lock; then
+    echo "$(date) - Failed to acquire lock, exiting" >> $log_file
+    exit 1
+fi
+trap 'release_lock' EXIT
+
 # Backup original theme if it doesn't exist yet
 if [ ! -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
     if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource" ]; then
@@ -17,8 +78,7 @@ fi
 # Restore custom theme if it exists
 if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
     echo "Restoring custom theme" >> $log_file
-    cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" "/usr/share/gnome-shell/gnome-shell-theme.gresource"
-    chmod 644 "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+    install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
     echo "Custom theme successfully restored" >> $log_file
 else
     echo "ERROR: Custom theme file not found" >> $log_file

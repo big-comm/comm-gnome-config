@@ -142,8 +142,14 @@ def restore_default_theme():
         current_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource"
         
         if os.path.exists(default_theme):
-            shutil.copy(default_theme, current_theme)
-            os.chmod(current_theme, 0o644)
+            # Atomic install: copy to a temp file in the same directory and
+            # rename it so the inode the running gnome-shell has mmap'd is
+            # never truncated in place.
+            fd, tmp = tempfile.mkstemp(dir="/usr/share/gnome-shell", prefix=".gstheme-", suffix=".tmp")
+            os.close(fd)
+            shutil.copy(default_theme, tmp)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, current_theme)
             logging.info("BigCommunity: Default GDM theme restored for gdm-settings compatibility")
             return True
         else:
@@ -394,8 +400,13 @@ def main():
                 shutil.copy("/usr/share/gnome-shell/gnome-shell-theme.gresource", 
                            "/usr/share/gnome-shell/gnome-shell-theme.gresource.default")
         
-        # Save backup copy for package
-        shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource.big")
+        # Save backup copy for package (atomic: a half-written .big must never
+        # be what the gnome-shell upgrade hook restores over the live theme)
+        fd, tmp = tempfile.mkstemp(dir="/usr/share/gnome-shell", prefix=".gstheme-", suffix=".tmp")
+        os.close(fd)
+        shutil.copy("gnome-shell-theme.gresource", tmp)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, "/usr/share/gnome-shell/gnome-shell-theme.gresource.big")
         
         # Install new theme only if gdm-settings is not present
         if not is_gdm_settings_installed():
@@ -412,6 +423,9 @@ def main():
             fd, tmp = tempfile.mkstemp(dir="/usr/share/gnome-shell", prefix=".gstheme-", suffix=".tmp")
             os.close(fd)
             shutil.copy("gnome-shell-theme.gresource", tmp)
+            # shutil.copy carries over the source mode, which depends on the
+            # umask glib-compile-resources ran under; make it explicit.
+            os.chmod(tmp, 0o644)
             os.replace(tmp, dst)
             logging.info("BigCommunity: GDM wallpaper theme successfully updated")
         else:
