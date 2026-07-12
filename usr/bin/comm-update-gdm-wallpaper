@@ -13,7 +13,6 @@ import shutil
 import tempfile
 import logging
 import pwd
-import shlex
 
 # Configure logging
 logging.basicConfig(
@@ -143,8 +142,14 @@ def restore_default_theme():
         current_theme = "/usr/share/gnome-shell/gnome-shell-theme.gresource"
         
         if os.path.exists(default_theme):
-            shutil.copy(default_theme, current_theme)
-            os.chmod(current_theme, 0o644)
+            # Atomic install: copy to a temp file in the same directory and
+            # rename it so the inode the running gnome-shell has mmap'd is
+            # never truncated in place.
+            fd, tmp = tempfile.mkstemp(dir="/usr/share/gnome-shell", prefix=".gstheme-", suffix=".tmp")
+            os.close(fd)
+            shutil.copy(default_theme, tmp)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, current_theme)
             logging.info("BigCommunity: Default GDM theme restored for gdm-settings compatibility")
             return True
         else:
@@ -190,7 +195,8 @@ def get_dbus_address(user):
         return None
 
     try:
-        pid = run_command(f"pgrep -u {shlex.quote(user)} gnome-session | head -n1", shell=True)
+        pids = run_command(['pgrep', '-u', user, 'gnome-session'])
+        pid = pids.splitlines()[0] if pids else None
         if not pid:
             return get_user_bus_address(user)
 
@@ -210,15 +216,36 @@ def get_dbus_address(user):
         logging.error(f"Error getting DBUS address: {str(e)}")
         return get_user_bus_address(user)
 
+def user_env_args(user, display, dbus_address):
+    """Build environment arguments for commands run inside the user session."""
+    env_args = []
+    try:
+        user_info = pwd.getpwnam(user)
+        env_args.extend([
+            f"HOME={user_info.pw_dir}",
+            f"USER={user}",
+            f"LOGNAME={user}",
+            f"XDG_RUNTIME_DIR=/run/user/{user_info.pw_uid}",
+        ])
+    except KeyError:
+        pass
+    if display:
+        env_args.append(f"DISPLAY={display}")
+    if dbus_address:
+        env_args.append(f"DBUS_SESSION_BUS_ADDRESS={dbus_address}")
+    return env_args
+
 def read_user_setting(user, display, dbus_address, command):
     """Run a settings command in the user's session"""
-    env_prefix = []
-    if display:
-        env_prefix.append(f"DISPLAY={shlex.quote(display)}")
-    if dbus_address:
-        env_prefix.append(f"DBUS_SESSION_BUS_ADDRESS={shlex.quote(dbus_address)}")
-    user_command = " ".join(env_prefix + [command])
-    return run_command(['su', '-', user, '-c', user_command])
+    return run_command([
+        'runuser',
+        '-u',
+        user,
+        '--',
+        'env',
+        *user_env_args(user, display, dbus_address),
+        *command,
+    ])
 
 def get_user_wallpaper(user, display, dbus_address):
     """Get the wallpaper URI that matches the user's color scheme"""
@@ -226,7 +253,7 @@ def get_user_wallpaper(user, display, dbus_address):
         user,
         display,
         dbus_address,
-        "gsettings get org.gnome.desktop.interface color-scheme",
+        ['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'],
     )
 
     keys = [
@@ -237,10 +264,19 @@ def get_user_wallpaper(user, display, dbus_address):
         keys.reverse()
 
     for key in keys:
-        wallpaper = read_user_setting(user, display, dbus_address, f"dconf read {key}")
+        wallpaper = read_user_setting(user, display, dbus_address, ['dconf', 'read', key])
         if wallpaper and wallpaper != "''":
             return wallpaper.strip().strip("'")
     return None
+
+def normalize_wallpaper_uri(wallpaper):
+    """Normalize a wallpaper URI passed by dconf or the monitor service."""
+    if not wallpaper:
+        return None
+    wallpaper = wallpaper.strip().strip("'").strip('"')
+    if not wallpaper:
+        return None
+    return wallpaper
 
 def main():
     logging.info("BigCommunity: Starting GDM wallpaper update")
@@ -287,8 +323,13 @@ def main():
             logging.error("Could not determine DBUS session address")
             return
 
-        # Get wallpaper file
-        wallpaper = get_user_wallpaper(current_user, display, dbus_address)
+        # Get wallpaper file. Prefer the value observed by wallpaper-monitor so
+        # logout-time updates do not reread stale dconf state.
+        wallpaper = normalize_wallpaper_uri(os.environ.get('COMM_WALLPAPER_URI'))
+        if wallpaper:
+            logging.info("BigCommunity: Using wallpaper provided by monitor")
+        else:
+            wallpaper = get_user_wallpaper(current_user, display, dbus_address)
         if not wallpaper:
             logging.error("Could not get wallpaper path")
             return
@@ -359,12 +400,33 @@ def main():
                 shutil.copy("/usr/share/gnome-shell/gnome-shell-theme.gresource", 
                            "/usr/share/gnome-shell/gnome-shell-theme.gresource.default")
         
-        # Save backup copy for package
-        shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource.big")
+        # Save backup copy for package (atomic: a half-written .big must never
+        # be what the gnome-shell upgrade hook restores over the live theme)
+        fd, tmp = tempfile.mkstemp(dir="/usr/share/gnome-shell", prefix=".gstheme-", suffix=".tmp")
+        os.close(fd)
+        shutil.copy("gnome-shell-theme.gresource", tmp)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, "/usr/share/gnome-shell/gnome-shell-theme.gresource.big")
         
         # Install new theme only if gdm-settings is not present
         if not is_gdm_settings_installed():
-            shutil.copy("gnome-shell-theme.gresource", "/usr/share/gnome-shell/gnome-shell-theme.gresource")
+            # Atomic install. An in-place shutil.copy() truncates+rewrites the
+            # SAME inode that the RUNNING gnome-shell has mmap'd as a registered
+            # GResource, corrupting it mid-write — the shell then can't find
+            # gnome-shell-dark.css and renders UNSTYLED (raw quick-settings, no
+            # panel background) on the next live theme reload (e.g. when a layout
+            # switch changes the wallpaper and triggers this update). os.replace
+            # is atomic and swaps in a NEW inode, so the running shell keeps its
+            # still-valid resource and the new GDM wallpaper is picked up at the
+            # next login.
+            dst = "/usr/share/gnome-shell/gnome-shell-theme.gresource"
+            fd, tmp = tempfile.mkstemp(dir="/usr/share/gnome-shell", prefix=".gstheme-", suffix=".tmp")
+            os.close(fd)
+            shutil.copy("gnome-shell-theme.gresource", tmp)
+            # shutil.copy carries over the source mode, which depends on the
+            # umask glib-compile-resources ran under; make it explicit.
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, dst)
             logging.info("BigCommunity: GDM wallpaper theme successfully updated")
         else:
             logging.info("BigCommunity: gdm-settings detected after processing - theme not applied")

@@ -10,19 +10,94 @@ DCONF_DIR="${HOME}/.config/dconf"
 SETTINGS_FILE="${DCONF_DIR}/settings.${DESKTOP_ENV}"
 LOG_FILE="/tmp/dconf-sync-${DESKTOP_ENV}.log"
 LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/dconf-sync-${DESKTOP_ENV}.lock"
+LAYOUT_SWITCHER_HASH_FILE="${SETTINGS_FILE}.layout-switcher.sha256"
 
 # Logging function
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${DESKTOP_ENV}] $1" | tee -a "${LOG_FILE}"
 }
 
+read_settings_value() {
+    local section="$1"
+    local key="$2"
+
+    awk -v section="[${section}]" -v key="${key}" '
+        $0 == section { in_section = 1; next }
+        /^\[/ { in_section = 0 }
+        in_section && index($0, key "=") == 1 {
+            sub(/^[^=]+=/, "")
+            print
+            exit
+        }
+    ' "${SETTINGS_FILE}" 2>/dev/null || true
+}
+
+setting_differs_from_file() {
+    local path="$1"
+    local section="$2"
+    local key="$3"
+    local live_value
+    local saved_value
+
+    live_value=$(dconf read "${path}" 2>/dev/null || true)
+    saved_value=$(read_settings_value "${section}" "${key}")
+
+    [[ -n "${live_value}" && "${live_value}" != "${saved_value}" ]]
+}
+
+wallpaper_settings_changed() {
+    setting_differs_from_file \
+        "/org/gnome/desktop/background/picture-uri" \
+        "org/gnome/desktop/background" \
+        "picture-uri" && return 0
+
+    setting_differs_from_file \
+        "/org/gnome/desktop/background/picture-uri-dark" \
+        "org/gnome/desktop/background" \
+        "picture-uri-dark" && return 0
+
+    setting_differs_from_file \
+        "/org/gnome/desktop/screensaver/picture-uri" \
+        "org/gnome/desktop/screensaver" \
+        "picture-uri" && return 0
+
+    return 1
+}
+
 log_message "Stopping dconf sync service"
 
 # External tool (e.g. layout-switcher) is mid-apply: skip the final save so
 # we don't clobber the clean settings.gnome it is about to write.
+# The holder writes its PID into the lock; if that process died (e.g.
+# SIGKILL mid-apply) the leftover lock must not mute the final save —
+# treat it as stale and continue.
 if [ -e "${LOCK_FILE}" ]; then
-    log_message "Skipping final save - lock file present (${LOCK_FILE})"
-    exit 0
+    lock_pid=$(cat "${LOCK_FILE}" 2>/dev/null || true)
+    if [[ -z "${lock_pid}" ]] || ! kill -0 "${lock_pid}" 2>/dev/null; then
+        log_message "Removing stale lock (owner ${lock_pid:-unknown} not running)"
+        rm -f "${LOCK_FILE}"
+    else
+        log_message "Skipping final save - lock file present (${LOCK_FILE})"
+        exit 0
+    fi
+fi
+
+# If layout-switcher wrote settings.gnome and no monitor save changed it
+# afterward, keep that exact layout file. A final live dump during logout can
+# contain transient extension state and make the next login inherit residue.
+wallpaper_changed=0
+if wallpaper_settings_changed; then
+    wallpaper_changed=1
+    log_message "Wallpaper differs from settings.gnome - allowing final save"
+fi
+
+if [[ "${wallpaper_changed}" -eq 0 && -s "${SETTINGS_FILE}" && -s "${LAYOUT_SWITCHER_HASH_FILE}" ]]; then
+    managed_hash=$(awk '{print $1; exit}' "${LAYOUT_SWITCHER_HASH_FILE}" 2>/dev/null || true)
+    current_hash=$(sha256sum "${SETTINGS_FILE}" 2>/dev/null | awk '{print $1}' || true)
+    if [[ -n "${managed_hash}" && "${managed_hash}" == "${current_hash}" ]]; then
+        log_message "Skipping final save - layout-switcher managed settings unchanged"
+        exit 0
+    fi
 fi
 
 # Check if dconf is still responsive and has valid settings
