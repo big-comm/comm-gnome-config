@@ -202,6 +202,13 @@ pre_remove() {
         printMsg "Restoring original GNOME shell theme..."
         install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
     fi
+
+    # Restore original "About" logos overwritten by the community-text-rounded hook
+    for backup in /usr/share/icons/manjaro/*-rounded.svg.default; do
+        [ -e "$backup" ] || continue
+        printMsg "Restoring original About logo..."
+        mv -f "$backup" "${backup%.default}"
+    done
 }
 
 # Function executed after package removal

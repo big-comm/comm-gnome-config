@@ -1,9 +1,55 @@
 #!/bin/sh
-# Change About logo from Gnome to BigCommunity
+# Change the "About" logo in GNOME Settings from Manjaro to BigCommunity.
+#
+# gnome-control-center (Manjaro build) hardcodes the logo paths inside the
+# binary, so the only way to brand it is to overwrite those files in place.
+# We cannot ship them directly because they belong to gnome-control-center
+# (file conflict), hence this hook.
+#
+# The script is idempotent and is triggered by any transaction touching
+# /usr/share/icons/manjaro/*.svg -- that covers both gnome-control-center
+# updates (which restore the Manjaro logo) and comm-gnome-config updates
+# (which ship a new BigCommunity logo).
 
-# Check if the original files exist
-if [ -f "/usr/share/icons/manjaro/manjarolinux-text-rounded.svg" ] && [ -f "/usr/share/icons/manjaro/manjarolinux-text-dark-rounded.svg" ]; then
-  # Perform file replacement
-  cp -f /usr/share/icons/manjaro/bigcomm-text-rounded.svg /usr/share/icons/manjaro/manjarolinux-text-rounded.svg
-  cp -f /usr/share/icons/manjaro/bigcomm-text-dark-rounded.svg /usr/share/icons/manjaro/manjarolinux-text-dark-rounded.svg
-fi
+set -eu
+
+ICON_DIR="/usr/share/icons/manjaro"
+SRC_LIGHT="${ICON_DIR}/bigcomm-text-rounded.svg"
+SRC_DARK="${ICON_DIR}/bigcomm-text-dark-rounded.svg"
+
+# Nothing to do if our own artwork is missing (e.g. package being removed).
+[ -f "$SRC_LIGHT" ] && [ -f "$SRC_DARK" ] || exit 0
+
+# Overwrite $2 (target) with $1 (source), keeping a .default backup of the
+# original vendor file. Skips the copy when the target is already up to date.
+replace_logo() {
+    src="$1"
+    dst="$2"
+
+    [ -f "$dst" ] || return 0
+    cmp -s "$src" "$dst" && return 0
+
+    # Keep a copy of the vendor original for pre_remove. The grep guard avoids
+    # backing up an older BigCommunity logo (which also differs from $src)
+    # over a genuine Manjaro file.
+    if ! grep -q 'BigCommunity' "$dst" 2>/dev/null; then
+        cp -f "$dst" "${dst}.default" 2>/dev/null || true
+    fi
+
+    install -Dm644 "$src" "$dst"
+    printf 'comm-gnome-config: branded %s\n' "$dst"
+}
+
+# Match by pattern instead of a fixed name so a rename upstream
+# (manjarolinux-* -> manjaro-*, etc.) does not silently break branding.
+for target in "$ICON_DIR"/*-text-rounded.svg "$ICON_DIR"/*-text-dark-rounded.svg; do
+    [ -f "$target" ] || continue
+
+    case "${target##*/}" in
+        bigcomm-*) continue ;;                 # our own source files
+        *-text-dark-rounded.svg) replace_logo "$SRC_DARK" "$target" ;;
+        *-text-rounded.svg)      replace_logo "$SRC_LIGHT" "$target" ;;
+    esac
+done
+
+exit 0

@@ -1,11 +1,10 @@
 [Trigger]
-Type = Package
+Type = Path
 Operation = Install
 Operation = Upgrade
-Target = gnome-control-center
-Target = comm-skel
+Target = usr/share/icons/manjaro/*.svg
 
 [Action]
-Description = Change About logo from Gnome to Community
+Description = Changing About logo from Manjaro to BigCommunity...
 When = PostTransaction
 Exec = /usr/share/libalpm/scripts/community-text-rounded
