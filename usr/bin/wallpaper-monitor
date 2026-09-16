@@ -170,7 +170,8 @@ def should_monitor_wallpaper(force=False):
         return _last_should_monitor
     
     # Check if our theme files exist
-    if not os.path.exists("/usr/share/gnome-shell/gnome-shell-theme.gresource.default"):
+    default_theme = run_command(['/usr/share/libalpm/scripts/gdm-theme-path', 'default'])
+    if not default_theme or not os.path.exists(default_theme):
         logging.warning("BigCommunity: Default theme backup not found")
         _last_should_monitor = False
         return _last_should_monitor

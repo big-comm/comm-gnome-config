@@ -67,18 +67,21 @@ if ! acquire_lock; then
 fi
 trap 'release_lock' EXIT
 
+custom_theme=$(/usr/share/libalpm/scripts/gdm-theme-path big) || exit 1
+default_theme=$(/usr/share/libalpm/scripts/gdm-theme-path default) || exit 1
+
 # Backup original theme if it doesn't exist yet
-if [ ! -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+if [ ! -e "$default_theme" ]; then
     if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource" ]; then
         echo "Creating backup of original theme" >> $log_file
-        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource" "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+        cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource" "$default_theme"
     fi
 fi
 
 # Restore custom theme if it exists
-if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
+if [ -e "$custom_theme" ]; then
     echo "Restoring custom theme" >> $log_file
-    install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
+    install_gresource "$custom_theme" || exit 1
     echo "Custom theme successfully restored" >> $log_file
 else
     echo "ERROR: Custom theme file not found" >> $log_file

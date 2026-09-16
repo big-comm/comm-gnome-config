@@ -39,8 +39,7 @@ build() {
 
 check() {
     cd "${srcdir}/${pkgname}"
-    # Add check/test steps here, if needed
-    # For example: make check
+    python -m unittest discover -s tests -v
 }
 
 package() {

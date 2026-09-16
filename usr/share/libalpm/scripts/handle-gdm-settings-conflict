@@ -74,9 +74,11 @@ is_gdm_settings_installed() {
 
 # Function to restore default theme
 restore_default_theme() {
-    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+    local theme
+    theme=$(/usr/share/libalpm/scripts/gdm-theme-path default) || return 1
+    if [ -e "$theme" ]; then
         echo "BigCommunity: Restoring default GDM theme for gdm-settings compatibility" >> $log_file
-        install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+        install_gresource "$theme" || return 1
         return 0
     else
         echo "BigCommunity: WARNING - Default theme backup not found" >> $log_file
@@ -86,9 +88,11 @@ restore_default_theme() {
 
 # Function to restore custom theme
 restore_custom_theme() {
-    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
+    local theme
+    theme=$(/usr/share/libalpm/scripts/gdm-theme-path big) || return 1
+    if [ -e "$theme" ]; then
         echo "BigCommunity: Restoring custom wallpaper sync theme" >> $log_file
-        install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
+        install_gresource "$theme" || return 1
 
         # Update with current wallpaper
         if [ -f "/usr/bin/comm-update-gdm-wallpaper" ]; then

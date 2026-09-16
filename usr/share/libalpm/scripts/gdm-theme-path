@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Select resources for the installed Shell, never the running session.
+set -eu
+
+kind=${1:-big}
+case "$kind" in big|default) ;; *) exit 2 ;; esac
+version=$(gnome-shell --version)
+version=${version##* }
+case "${version%%.*}" in
+    49|50) base=gnome-shell-theme ;;
+    51) base=gnome-shell-theme-51 ;;
+    *) echo "Unsupported GNOME Shell theme version: $version" >&2; exit 1 ;;
+esac
+printf '/usr/share/gnome-shell/%s.gresource.%s\n' "$base" "$kind"

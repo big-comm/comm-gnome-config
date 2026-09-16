@@ -1,0 +1,58 @@
+/* BigCommunity GDM overlay. Keep GNOME 51 layout and control sizing. */
+#lockDialogGroup {
+  background: #2e3436 url('resource:///org/gnome/shell/theme/fundo.jpg');
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+}
+
+.login-dialog {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+/* Only the outer prompt is a card; the input well keeps native spacing. */
+.login-dialog .login-dialog-prompt-layout,
+.unlock-dialog .login-dialog-prompt-layout {
+  width: 26.5em;
+  background-color: rgba(0, 0, 0, 0.4);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.login-dialog .login-dialog-prompt-entry,
+.unlock-dialog .login-dialog-prompt-entry {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  color: white;
+}
+
+.login-dialog .login-dialog-prompt-entry:focus,
+.unlock-dialog .login-dialog-prompt-entry:focus {
+  background-color: rgba(245, 245, 245, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.login-dialog-banner-view .login-dialog-banner {
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.login-dialog-user-list-item {
+  background-color: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+}
+
+.login-dialog .user-widget.vertical .user-icon,
+.unlock-dialog .user-widget.vertical .user-icon {
+  icon-size: 96px;
+}
+
+.login-dialog .user-widget.vertical .user-widget-label,
+.unlock-dialog .user-widget.vertical .user-widget-label {
+  font-size: 1.4em;
+  font-weight: 400;
+}

@@ -47,25 +47,28 @@ install_gresource() {
 
 # Function to apply the appropriate theme based on gdm-settings presence
 apply_appropriate_theme() {
+    local custom_theme default_theme
+    custom_theme=$(/usr/share/libalpm/scripts/gdm-theme-path big) || return 1
+    default_theme=$(/usr/share/libalpm/scripts/gdm-theme-path default) || return 1
     # Always create backup if it doesn't exist
-    if [ ! -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+    if [ ! -e "$default_theme" ]; then
         if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource" ]; then
             printMsg "Creating backup of original GNOME shell theme..."
-            cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource" "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+            cp -f "/usr/share/gnome-shell/gnome-shell-theme.gresource" "$default_theme"
         fi
     fi
     
     # Check gdm-settings status and apply appropriate theme
     if is_gdm_settings_installed; then
         printMsg "gdm-settings detected - applying default theme for compatibility..."
-        if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
-            install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+        if [ -e "$default_theme" ]; then
+            install_gresource "$default_theme" || return 1
         fi
         return 1  # Signal that default theme was applied
     else
         printMsg "Applying BigCommunity custom wallpaper sync theme..."
-        if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.big" ]; then
-            install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.big"
+        if [ -e "$custom_theme" ]; then
+            install_gresource "$custom_theme" || return 1
         fi
         return 0  # Signal that custom theme was applied
     fi
@@ -198,9 +201,11 @@ pre_remove() {
     fi
 
     # Restore original theme
-    if [ -e "/usr/share/gnome-shell/gnome-shell-theme.gresource.default" ]; then
+    local default_theme
+    default_theme=$(/usr/share/libalpm/scripts/gdm-theme-path default) || return 1
+    if [ -e "$default_theme" ]; then
         printMsg "Restoring original GNOME shell theme..."
-        install_gresource "/usr/share/gnome-shell/gnome-shell-theme.gresource.default"
+        install_gresource "$default_theme"
     fi
 
     # Restore original "About" logos overwritten by the community-text-rounded hook
