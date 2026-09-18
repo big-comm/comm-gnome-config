@@ -158,30 +158,13 @@ save_settings() {
 
     log_message "Saving dconf settings to ${SETTINGS_FILE}"
 
-    # Atomic write using temp file
-    if dconf dump / > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
-        # Validate that dump is not empty (protection against forced shutdown corruption)
-        if [[ ! -s "${SETTINGS_FILE}.tmp" ]]; then
-            log_message "WARNING: dconf dump produced empty output, skipping save"
-            rm -f "${SETTINGS_FILE}.tmp"
-            return 1
-        fi
-        # Keep backup of current good settings before overwriting
-        if [[ -s "${SETTINGS_FILE}" ]]; then
-            cp -f "${SETTINGS_FILE}" "${SETTINGS_FILE}.bak"
-        fi
-        mv "${SETTINGS_FILE}.tmp" "${SETTINGS_FILE}"
-        rm -f "${LAYOUT_SWITCHER_HASH_FILE}"
-        sync "${SETTINGS_FILE}"
+    if /usr/bin/python /usr/share/comm-gnome-config/dconf_persistence.py save; then
         LAST_MONITOR_FILE_STAMP=$(settings_file_stamp)
         LAST_SAVE=${current_time}
         log_message "Settings saved successfully"
         return 0
-    else
-        log_message "ERROR: Failed to dump dconf settings"
-        rm -f "${SETTINGS_FILE}.tmp"
-        return 1
     fi
+    return 1
 }
 
 # Main monitoring loop
@@ -217,7 +200,8 @@ FLUSH_INTERVAL=3
 # letting "set -e" + pipefail kill the daemon on the spot. systemd
 # Restart=on-failure remains only as the outer net of last resort.
 while true; do
-    pending=0
+    # Reconcile gaps, including deferred events before a watch restart.
+    pending=1
     change=""
     dconf watch / | while true; do
         if read -r -t "${FLUSH_INTERVAL}" change; then

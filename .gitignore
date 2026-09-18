@@ -20,3 +20,7 @@ src/
 # Temporary files
 *.tmp
 .*.tmp
+
+# Python caches
+__pycache__/
+*.py[cod]

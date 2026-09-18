@@ -3,7 +3,7 @@
 pkgname=comm-gnome-config
 pkgdesc="Package configuration Desktop Gnome"
 # Uncomment and edit the following lines as needed
-depends=('comm-skel' 'glib2-devel' 'nautilus-python' 'python' 'imagemagick')
+depends=('comm-skel' 'glib2-devel' 'nautilus-python' 'python' 'python-gobject' 'imagemagick')
 #makedepends=('')
 #optdepends=('')
 conflicts=('big-skel')
@@ -59,6 +59,10 @@ package() {
             cp -a "${srcdir}/${dir}" "${pkgdir}/"
         fi
     done
+
+    # Build checks may create interpreter caches; never ship them.
+    find "${pkgdir}/usr" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+    find "${pkgdir}/usr" -depth -type d -name __pycache__ -empty -delete
 
     # Install license file if present
     if [ -f "LICENSE" ]; then
