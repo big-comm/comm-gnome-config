@@ -10,6 +10,8 @@ its signed package. Upstream: https://gitlab.gnome.org/GNOME/gnome-shell/-/tree/
 
 `gdm-51.css` only adds BigCommunity branding. Native control sizing, input-well
 layout, RTL rules and web login remain upstream. High contrast is unchanged.
+User cards keep the native 16 px corners and focus ring. Their background stays
+translucent in normal, selected, focused, hovered, pressed and disabled states.
 
 Rebuild after editing the overlay (run from the repository root):
 
