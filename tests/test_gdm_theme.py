@@ -116,3 +116,15 @@ install_gresource() { printf '%s\\n' "$1"; }
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoginScreenSettingsTests(unittest.TestCase):
+    def test_empty_logo_overrides_distribution_branding(self):
+        from gi.repository import GLib
+
+        keyfile = GLib.KeyFile()
+        keyfile.load_from_file(
+            str(ROOT / "etc/dconf/db/gdm.d/95-gdm-settings"), GLib.KeyFileFlags.NONE)
+        # Manjaro's libgdm ships a schema override with its own logo; an
+        # explicit system-db value keeps the greeter unbranded on 50 and 51.
+        self.assertEqual(keyfile.get_value("org/gnome/login-screen", "logo"), "''")

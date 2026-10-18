@@ -70,7 +70,8 @@ night-light-schedule-to=6.0
 #----- Login Screen ----
 [org/gnome/login-screen]
 #-----------------------
-#logo='/etc/gdm-logo.png'
+# Empty logo overrides distribution branding (e.g. Manjaro's libgdm on GNOME 51).
+logo=''
 banner-message-enable=true
 banner-message-text='BigCommunity'
 disable-restart-buttons=false
