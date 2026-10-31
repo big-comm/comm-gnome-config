@@ -10,9 +10,15 @@
   background-color: rgba(0, 0, 0, 0.4);
 }
 
-/* Only the outer prompt is a card; the input well keeps native spacing. */
+/* Only the outer prompt is a card; the input well keeps native spacing.
+ * GNOME 51 lowers the prompt by its 80px top margin (40px once centered)
+ * plus a 50px offset in loginDialog.js and unlockDialog.js. A visible card
+ * makes that drop obvious, so drop the top margin and reserve 100px below:
+ * centering then lifts the card by the same 50px. */
 .login-dialog .login-dialog-prompt-layout,
 .unlock-dialog .login-dialog-prompt-layout {
+  margin-top: 0;
+  margin-bottom: 100px;
   width: 26.5em;
   background-color: rgba(0, 0, 0, 0.4);
   border-radius: 16px;
