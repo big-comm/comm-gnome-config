@@ -25,7 +25,10 @@ Successful layout reapplication or the next login clears quarantine. Until
 then, later live changes are not automatically saved. The application reports
 this condition; background failures are recorded on stderr/journal.
 
-Login validates candidates before resetting dconf. Legacy installations can
+Login validates candidates before resetting dconf. It leaves dconf alone when
+the live values already equal the saved ones, and an export whose content is
+unchanged is not rewritten: each write waits for the disk, which takes seconds
+while a boot is still busy. Legacy installations can
 recover a missing, empty or invalid primary from `.bak`. Once migrated, the
 checksummed history is authoritative: valid-syntax truncation of the export
 cannot silently replace it. If no candidate is valid, keep live dconf intact

@@ -89,6 +89,19 @@ class PersistenceTests(unittest.TestCase):
         self.assertFalse(self.store.guarded())
         self.assertEqual(self.store.path.read_text(), NEW)
 
+    def test_login_keeps_matching_live_values(self):
+        self.store.publish(OLD)
+        with patch.object(p, 'dconf', return_value=OLD) as command:
+            p.login(self.store)
+        command.assert_called_once_with('dump', '/')
+
+    def test_unchanged_login_writes_nothing(self):
+        self.store.publish(OLD)
+        with patch.object(p, 'dconf', return_value=OLD), \
+                patch.object(p.os, 'replace') as replace:
+            p.login(self.store)
+        replace.assert_not_called()
+
     def test_failed_login_load_restores_live_values_and_retains_journal(self):
         calls = []
 
