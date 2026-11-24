@@ -18,6 +18,11 @@ PROTOCOL = 1
 
 def atomic_write(path, text):
     path = Path(path)
+    try:
+        if path.read_text() == text:
+            return
+    except (FileNotFoundError, UnicodeDecodeError):
+        pass
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
     try:
@@ -271,18 +276,19 @@ def login(store):
             return
         # Validation occurs before destructive reset. Retain runtime recovery too.
         previous = dconf('dump', '/')
-        if previous.strip():
-            validate(previous)
-        store.begin()
-        try:
-            dconf('reset', '-f', '/')
-            dconf('load', '/', text=candidate)
-        except Exception:
-            if previous.strip():
+        live = validate(previous) if previous.strip() else None
+        # Each dconf write waits for the disk, which is slow during a busy boot.
+        if live != validate(candidate):
+            store.begin()
+            try:
                 dconf('reset', '-f', '/')
-                dconf('load', '/', text=previous)
-            store.abort()
-            raise
+                dconf('load', '/', text=candidate)
+            except Exception:
+                if previous.strip():
+                    dconf('reset', '-f', '/')
+                    dconf('load', '/', text=previous)
+                store.abort()
+                raise
         store.publish(candidate)
         store.marker.unlink(missing_ok=True)
 
